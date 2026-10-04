@@ -55,7 +55,10 @@ export class EntriesController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @RequirePermission('CREATE', 'ENTRY', { source: 'body', key: 'projectId', resolveAs: 'PROJECT' })
+  // No scopeHint: multipart bodies aren't parsed when guards run.
+  // Service-level requireCreateScope() enforces project-scoped access
+  // after multer parses the request.
+  @RequirePermission('CREATE', 'ENTRY')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),

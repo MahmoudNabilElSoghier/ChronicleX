@@ -10,7 +10,7 @@ import type { Action } from '../../generated/prisma/client';
 import type { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PermissionsService } from '../rbac/permissions.service';
-import type { Grant, ScopeChain } from '../rbac/types';
+import { ScopeMatcher } from '../rbac/scope-matcher';
 import { StorageService } from '../storage/storage.service';
 import type { ListEntriesDto } from './dto/list-entries.dto';
 import type { UpdateEntryDto } from './dto/update-entry.dto';
@@ -29,6 +29,7 @@ export class EntriesService {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly permissions: PermissionsService,
+    private readonly scopes: ScopeMatcher,
   ) {}
 
   private async audit(
@@ -54,36 +55,7 @@ export class EntriesService {
 
   /** Grant-scoped WHERE for list queries. GROUP ENTRY:VIEW skips the clause. */
   async buildScopeWhere(userId: string): Promise<Prisma.EntryWhereInput> {
-    const grants = await this.permissions.getEffectiveGrants(userId);
-    const view = grants.filter((g) => g.action === 'VIEW' && g.resource === 'ENTRY');
-    if (view.length === 0) {
-      throw new ForbiddenException('Insufficient permissions');
-    }
-    if (view.some((g) => g.scopeType === 'GROUP')) {
-      return {};
-    }
-    const projectIds = view.filter((g) => g.scopeType === 'PROJECT').map((g) => g.scopeId);
-    const companyIds = view.filter((g) => g.scopeType === 'COMPANY').map((g) => g.scopeId);
-    const or: Prisma.EntryWhereInput[] = [];
-    if (projectIds.length > 0) or.push({ projectId: { in: projectIds } });
-    if (companyIds.length > 0) or.push({ companyId: { in: companyIds } });
-    if (or.length === 0) {
-      throw new ForbiddenException('Insufficient permissions');
-    }
-    return { OR: or };
-  }
-
-  private hasGrant(
-    grants: Grant[],
-    action: Action,
-    chain: ScopeChain,
-  ): boolean {
-    for (const g of grants) {
-      if (g.action !== action || g.resource !== 'ENTRY') continue;
-      if (g.scopeType === 'GROUP') return true;
-      if (chain.some((s) => s.scopeType === g.scopeType && s.scopeId === g.scopeId)) return true;
-    }
-    return false;
+    return this.scopes.buildEntryWhere(userId);
   }
 
   async upload(
@@ -108,6 +80,15 @@ export class EntriesService {
     }
     if (project.companyId !== dto.companyId) {
       throw new BadRequestException('Project does not belong to the given company');
+    }
+    // Service-level CREATE check: multipart bodies are parsed after guards run,
+    // so the route guard cannot see projectId. Enforcement lives here.
+    const mayCreate = await this.scopes.canAccess(actor.userId, 'CREATE', 'ENTRY', {
+      projectId: project.id,
+      companyId: project.companyId,
+    });
+    if (!mayCreate) {
+      throw new ForbiddenException('Insufficient permissions');
     }
 
     const fileHash = createHash('sha256').update(file.buffer).digest('hex');
@@ -276,13 +257,11 @@ export class EntriesService {
       if (project.companyId !== entry.companyId) {
         throw new BadRequestException('Project does not belong to the entry company');
       }
-      const grants = await this.permissions.getEffectiveGrants(actor.userId);
-      const chain: ScopeChain = [
-        { scopeType: 'PROJECT', scopeId: project.id },
-        { scopeType: 'COMPANY', scopeId: project.companyId },
-        { scopeType: 'GROUP', scopeId: '' },
-      ];
-      if (!this.hasGrant(grants, 'UPDATE', chain)) {
+      const mayMove = await this.scopes.canAccess(actor.userId, 'UPDATE', 'ENTRY', {
+        projectId: project.id,
+        companyId: project.companyId,
+      });
+      if (!mayMove) {
         throw new ForbiddenException('Insufficient permissions for the target project');
       }
       data.projectId = dto.projectId;

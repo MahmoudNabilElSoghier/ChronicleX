@@ -6,6 +6,7 @@ import {
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { PermissionsService } from '../../rbac/permissions.service';
+import { ScopeMatcher } from '../../rbac/scope-matcher';
 import { StorageService } from '../../storage/storage.service';
 import { EntriesService } from '../entries.service';
 
@@ -37,11 +38,13 @@ describe('EntriesService', () => {
     getObjectStream: jest.fn(),
   };
   const permissions = { getEffectiveGrants: jest.fn() };
+  const scopes = new ScopeMatcher(permissions as unknown as PermissionsService);
 
   const svc = new EntriesService(
     prisma as unknown as PrismaService,
     storage as unknown as StorageService,
     permissions as unknown as PermissionsService,
+    scopes,
   );
 
   const project = {
@@ -51,7 +54,12 @@ describe('EntriesService', () => {
     company: { id: 'c1', code: 2000 },
   };
 
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    permissions.getEffectiveGrants.mockResolvedValue([
+      { action: 'CREATE', resource: 'ENTRY', scopeType: 'PROJECT', scopeId: 'p1' },
+    ]);
+  });
 
   it('upload success creates the row and uploads to the derived key', async () => {
     prisma.project.findUnique.mockResolvedValue(project);
