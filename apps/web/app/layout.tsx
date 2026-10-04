@@ -1,7 +1,10 @@
 import type { Metadata } from 'next';
 import './globals.css';
 
-export const metadata: Metadata = { title: 'TMG Archive' };
+export const metadata: Metadata = {
+  title: 'ChronicleX — TMG Archive',
+  description: 'ChronicleX archiving platform built for TMG',
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return children;
