@@ -9,24 +9,27 @@ import {
   Post,
   Req,
   Res,
-  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import type { CookieOptions, Request, Response } from 'express';
 import { AuthService, REFRESH_COOKIE } from './auth.service';
+import { CurrentUser } from './decorators/current-user.decorator';
+import { Public } from './decorators/public.decorator';
 import { LoginDto } from './dto/login.dto';
 import { LoginThrottlerGuard } from './guards/login-throttler.guard';
-import { AccessPayload, TokenService } from './token.service';
+import { parseTtlToSeconds } from './token.service';
+import type { AuthenticatedUser } from './types';
 
-function refreshCookieOptions(config: ConfigService, tokens: TokenService): CookieOptions {
+function refreshCookieOptions(config: ConfigService): CookieOptions {
   const domain = config.get<string>('COOKIE_DOMAIN') ?? 'localhost';
   const options: CookieOptions = {
     httpOnly: true,
     sameSite: 'strict',
     path: '/auth',
-    maxAge: tokens.refreshTtlSeconds * 1000,
+    maxAge:
+      parseTtlToSeconds(config.get<string>('JWT_REFRESH_TTL') ?? '7d', 7 * 24 * 3600) * 1000,
     secure: config.get<string>('COOKIE_SECURE') === 'true',
   };
   // Domain=localhost is rejected by browsers; only send Domain for real hosts.
@@ -36,28 +39,20 @@ function refreshCookieOptions(config: ConfigService, tokens: TokenService): Cook
   return options;
 }
 
-function refreshClearOptions(config: ConfigService, tokens: TokenService): CookieOptions {
-  const options = { ...refreshCookieOptions(config, tokens) };
+function refreshClearOptions(config: ConfigService): CookieOptions {
+  const options = { ...refreshCookieOptions(config) };
   delete options.maxAge;
   return options;
-}
-
-function bearerToken(authHeader: string | undefined): string {
-  const [scheme, token] = (authHeader ?? '').split(' ');
-  if (scheme !== 'Bearer' || !token) {
-    throw new UnauthorizedException('Missing access token');
-  }
-  return token;
 }
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
-    private readonly tokens: TokenService,
     private readonly config: ConfigService,
   ) {}
 
+  @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @UseGuards(LoginThrottlerGuard)
@@ -72,10 +67,11 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ accessToken: string; user: unknown }> {
     const result = await this.auth.login(dto.email, dto.password, ip, userAgent ?? null);
-    res.cookie(REFRESH_COOKIE, result.refreshToken, refreshCookieOptions(this.config, this.tokens));
+    res.cookie(REFRESH_COOKIE, result.refreshToken, refreshCookieOptions(this.config));
     return { accessToken: result.accessToken, user: result.user };
   }
 
+  @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   async refresh(
@@ -90,14 +86,15 @@ export class AuthController {
         ip,
         userAgent ?? null,
       );
-      res.cookie(REFRESH_COOKIE, result.refreshToken, refreshCookieOptions(this.config, this.tokens));
+      res.cookie(REFRESH_COOKIE, result.refreshToken, refreshCookieOptions(this.config));
       return { accessToken: result.accessToken };
     } catch (err) {
-      res.clearCookie(REFRESH_COOKIE, refreshClearOptions(this.config, this.tokens));
+      res.clearCookie(REFRESH_COOKIE, refreshClearOptions(this.config));
       throw err;
     }
   }
 
+  @Public()
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   async logout(
@@ -107,18 +104,12 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
     await this.auth.logout(req.cookies?.[REFRESH_COOKIE] as string | undefined, ip, userAgent ?? null);
-    res.clearCookie(REFRESH_COOKIE, refreshClearOptions(this.config, this.tokens));
+    res.clearCookie(REFRESH_COOKIE, refreshClearOptions(this.config));
   }
 
-  // No guard yet (Phase 4 replaces this inline check with @RequirePermission).
+  // Protected by the global AuthGuard; permission checks arrive in Phase 5+ routes.
   @Get('me')
-  async me(@Headers('authorization') authorization: string | undefined): Promise<unknown> {
-    let payload: AccessPayload;
-    try {
-      payload = this.tokens.verify<AccessPayload>(bearerToken(authorization));
-    } catch {
-      throw new UnauthorizedException('Invalid access token');
-    }
-    return this.auth.me(payload.sub);
+  async me(@CurrentUser() user: AuthenticatedUser): Promise<unknown> {
+    return this.auth.me(user.id);
   }
 }
