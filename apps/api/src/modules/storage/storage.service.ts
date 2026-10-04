@@ -57,6 +57,15 @@ export class StorageService implements OnModuleInit {
     return stream;
   }
 
+  async getObjectBuffer(key: string): Promise<Buffer> {
+    const stream = (await this.client.getObject(this.bucket, key)) as unknown as Readable;
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+      chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : (chunk as Buffer));
+    }
+    return Buffer.concat(chunks);
+  }
+
   async statObject(key: string): Promise<{ size: number; contentType: string; etag: string }> {
     const stat = await this.client.statObject(this.bucket, key);
     return {

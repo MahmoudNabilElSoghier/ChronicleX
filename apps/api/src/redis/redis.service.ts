@@ -51,6 +51,42 @@ export class RedisService implements OnModuleDestroy {
     return deleted;
   }
 
+  async hset(key: string, fields: Record<string, string | number>): Promise<void> {
+    await this.ensureConnected();
+    await this.client.hset(key, fields as Record<string, string>);
+  }
+
+  async hgetall(key: string): Promise<Record<string, string>> {
+    await this.ensureConnected();
+    return this.client.hgetall(key);
+  }
+
+  /** Atomic increment. Returns the new value — use it for last-writer decisions. */
+  async hincrby(key: string, field: string, increment: number): Promise<number> {
+    await this.ensureConnected();
+    return this.client.hincrby(key, field, increment);
+  }
+
+  async expire(key: string, ttlSeconds: number): Promise<void> {
+    await this.ensureConnected();
+    await this.client.expire(key, ttlSeconds);
+  }
+
+  async rpush(key: string, value: string): Promise<void> {
+    await this.ensureConnected();
+    await this.client.rpush(key, value);
+  }
+
+  async lrange(key: string, start: number, stop: number): Promise<string[]> {
+    await this.ensureConnected();
+    return this.client.lrange(key, start, stop);
+  }
+
+  async llen(key: string): Promise<number> {
+    await this.ensureConnected();
+    return this.client.llen(key);
+  }
+
   async onModuleDestroy(): Promise<void> {
     if (this.client.status === 'ready' || this.client.status === 'connect') {
       this.client.disconnect();
