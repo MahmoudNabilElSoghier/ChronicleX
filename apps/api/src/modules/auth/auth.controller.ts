@@ -19,17 +19,16 @@ import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
 import { LoginDto } from './dto/login.dto';
 import { LoginThrottlerGuard } from './guards/login-throttler.guard';
-import { parseTtlToSeconds } from './token.service';
+import { TokenService } from './token.service';
 import type { AuthenticatedUser } from './types';
 
-function refreshCookieOptions(config: ConfigService): CookieOptions {
+function refreshCookieOptions(config: ConfigService, tokens: TokenService): CookieOptions {
   const domain = config.get<string>('COOKIE_DOMAIN') ?? 'localhost';
   const options: CookieOptions = {
     httpOnly: true,
     sameSite: 'strict',
     path: '/auth',
-    maxAge:
-      parseTtlToSeconds(config.get<string>('JWT_REFRESH_TTL') ?? '7d', 7 * 24 * 3600) * 1000,
+    maxAge: tokens.refreshTtlSeconds * 1000,
     secure: config.get<string>('COOKIE_SECURE') === 'true',
   };
   // Domain=localhost is rejected by browsers; only send Domain for real hosts.
@@ -39,8 +38,8 @@ function refreshCookieOptions(config: ConfigService): CookieOptions {
   return options;
 }
 
-function refreshClearOptions(config: ConfigService): CookieOptions {
-  const options = { ...refreshCookieOptions(config) };
+function refreshClearOptions(config: ConfigService, tokens: TokenService): CookieOptions {
+  const options = { ...refreshCookieOptions(config, tokens) };
   delete options.maxAge;
   return options;
 }
@@ -49,6 +48,7 @@ function refreshClearOptions(config: ConfigService): CookieOptions {
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
+    private readonly tokens: TokenService,
     private readonly config: ConfigService,
   ) {}
 
@@ -67,7 +67,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ accessToken: string; user: unknown }> {
     const result = await this.auth.login(dto.email, dto.password, ip, userAgent ?? null);
-    res.cookie(REFRESH_COOKIE, result.refreshToken, refreshCookieOptions(this.config));
+    res.cookie(REFRESH_COOKIE, result.refreshToken, refreshCookieOptions(this.config, this.tokens));
     return { accessToken: result.accessToken, user: result.user };
   }
 
@@ -86,10 +86,10 @@ export class AuthController {
         ip,
         userAgent ?? null,
       );
-      res.cookie(REFRESH_COOKIE, result.refreshToken, refreshCookieOptions(this.config));
+      res.cookie(REFRESH_COOKIE, result.refreshToken, refreshCookieOptions(this.config, this.tokens));
       return { accessToken: result.accessToken };
     } catch (err) {
-      res.clearCookie(REFRESH_COOKIE, refreshClearOptions(this.config));
+      res.clearCookie(REFRESH_COOKIE, refreshClearOptions(this.config, this.tokens));
       throw err;
     }
   }
@@ -104,7 +104,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
     await this.auth.logout(req.cookies?.[REFRESH_COOKIE] as string | undefined, ip, userAgent ?? null);
-    res.clearCookie(REFRESH_COOKIE, refreshClearOptions(this.config));
+    res.clearCookie(REFRESH_COOKIE, refreshClearOptions(this.config, this.tokens));
   }
 
   // Protected by the global AuthGuard; permission checks arrive in Phase 5+ routes.

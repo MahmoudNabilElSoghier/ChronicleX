@@ -77,12 +77,14 @@ describe('PermissionsGuard', () => {
   it('COMPANY_ADMIN c1 allows VIEW ENTRY in own company chain', async () => {
     permissions.getEffectiveGrants.mockResolvedValue([grant('VIEW', 'ENTRY', 'COMPANY', 'c1')]);
     scopes.resolve.mockResolvedValue(chain('p1', 'c1'));
+    setRequired({ action: 'VIEW', resource: 'ENTRY', scopeHint: { source: 'params', key: 'id' } });
     await expect(guard.canActivate(ctxWith(reqFor({ id: 'u1' })))).resolves.toBe(true);
   });
 
   it('COMPANY_ADMIN c1 denies VIEW ENTRY in foreign company chain', async () => {
     permissions.getEffectiveGrants.mockResolvedValue([grant('VIEW', 'ENTRY', 'COMPANY', 'c1')]);
     scopes.resolve.mockResolvedValue(chain('p2', 'c2'));
+    setRequired({ action: 'VIEW', resource: 'ENTRY', scopeHint: { source: 'params', key: 'id' } });
     await expect(guard.canActivate(ctxWith(reqFor({ id: 'u1' })))).rejects.toBeInstanceOf(
       ForbiddenException,
     );
@@ -91,14 +93,14 @@ describe('PermissionsGuard', () => {
   it('PROJECT_ADMIN p1 allows CREATE ENTRY on p1', async () => {
     permissions.getEffectiveGrants.mockResolvedValue([grant('CREATE', 'ENTRY', 'PROJECT', 'p1')]);
     scopes.resolve.mockResolvedValue(chain('p1', 'c1'));
-    setRequired({ action: 'CREATE', resource: 'ENTRY' });
+    setRequired({ action: 'CREATE', resource: 'ENTRY', scopeHint: { source: 'params', key: 'id' } });
     await expect(guard.canActivate(ctxWith(reqFor({ id: 'u2' })))).resolves.toBe(true);
   });
 
   it('PROJECT_ADMIN p1 denies CREATE ENTRY on p2', async () => {
     permissions.getEffectiveGrants.mockResolvedValue([grant('CREATE', 'ENTRY', 'PROJECT', 'p1')]);
     scopes.resolve.mockResolvedValue(chain('p2', 'c2'));
-    setRequired({ action: 'CREATE', resource: 'ENTRY' });
+    setRequired({ action: 'CREATE', resource: 'ENTRY', scopeHint: { source: 'params', key: 'id' } });
     await expect(guard.canActivate(ctxWith(reqFor({ id: 'u2' })))).rejects.toBeInstanceOf(
       ForbiddenException,
     );
@@ -120,7 +122,7 @@ describe('PermissionsGuard', () => {
   it('VIEWER denies CREATE ENTRY', async () => {
     permissions.getEffectiveGrants.mockResolvedValue([grant('VIEW', 'ENTRY', 'PROJECT', 'p1')]);
     scopes.resolve.mockResolvedValue(chain('p1', 'c1'));
-    setRequired({ action: 'CREATE', resource: 'ENTRY' });
+    setRequired({ action: 'CREATE', resource: 'ENTRY', scopeHint: { source: 'params', key: 'id' } });
     await expect(guard.canActivate(ctxWith(reqFor({ id: 'u4' })))).rejects.toBeInstanceOf(
       ForbiddenException,
     );
@@ -144,5 +146,36 @@ describe('PermissionsGuard', () => {
       '@RequirePermission cannot be used on a @Public route',
     );
     expect(permissions.getEffectiveGrants).not.toHaveBeenCalled();
+  });
+
+  it('PROJECT_ADMIN p1, no scopeHint → allow (row filtering is the handler job)', async () => {
+    permissions.getEffectiveGrants.mockResolvedValue([grant('VIEW', 'ENTRY', 'PROJECT', 'p1')]);
+    setRequired({ action: 'VIEW', resource: 'ENTRY' });
+    await expect(guard.canActivate(ctxWith(reqFor({ id: 'u2' })))).resolves.toBe(true);
+    expect(scopes.resolve).not.toHaveBeenCalled();
+  });
+
+  it('PROJECT_ADMIN p1, hint on own entry → allow', async () => {
+    permissions.getEffectiveGrants.mockResolvedValue([grant('VIEW', 'ENTRY', 'PROJECT', 'p1')]);
+    scopes.resolve.mockResolvedValue(chain('p1', 'c1'));
+    setRequired({ action: 'VIEW', resource: 'ENTRY', scopeHint: { source: 'params', key: 'id' } });
+    await expect(guard.canActivate(ctxWith(reqFor({ id: 'u2' })))).resolves.toBe(true);
+  });
+
+  it('PROJECT_ADMIN p1, hint on foreign entry → deny', async () => {
+    permissions.getEffectiveGrants.mockResolvedValue([grant('VIEW', 'ENTRY', 'PROJECT', 'p1')]);
+    scopes.resolve.mockResolvedValue(chain('p2', 'c2'));
+    setRequired({ action: 'VIEW', resource: 'ENTRY', scopeHint: { source: 'params', key: 'id' } });
+    await expect(guard.canActivate(ctxWith(reqFor({ id: 'u2' })))).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it('VIEWER with no grants, no hint → deny', async () => {
+    permissions.getEffectiveGrants.mockResolvedValue([]);
+    setRequired({ action: 'VIEW', resource: 'ENTRY' });
+    await expect(guard.canActivate(ctxWith(reqFor({ id: 'u4' })))).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 });

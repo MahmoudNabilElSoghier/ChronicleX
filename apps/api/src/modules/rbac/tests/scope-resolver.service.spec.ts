@@ -55,6 +55,22 @@ describe('ScopeResolver', () => {
     ]);
   });
 
+  it('resolveAs PROJECT resolves a projectId hint to [PROJECT, COMPANY, GROUP]', async () => {
+    prisma.project.findUnique.mockResolvedValue({ companyId: 'c1' });
+    await expect(
+      resolver.resolve(
+        'ENTRY',
+        { source: 'body', key: 'projectId', resolveAs: 'PROJECT' },
+        reqWith('body', 'projectId', 'p1'),
+      ),
+    ).resolves.toEqual([
+      { scopeType: 'PROJECT', scopeId: 'p1' },
+      { scopeType: 'COMPANY', scopeId: 'c1' },
+      { scopeType: 'GROUP', scopeId: '' },
+    ]);
+    expect(prisma.entry.findUnique).not.toHaveBeenCalled();
+  });
+
   it('no hint + AUDIT resolves [GROUP]', async () => {
     await expect(resolver.resolve('AUDIT', undefined, {} as Request)).resolves.toEqual([
       { scopeType: 'GROUP', scopeId: '' },

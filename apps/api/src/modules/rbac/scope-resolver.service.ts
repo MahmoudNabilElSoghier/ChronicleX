@@ -18,7 +18,10 @@ export class ScopeResolver {
   }
 
   async resolve(resource: Resource, hint: ScopeHint | undefined, req: Request): Promise<ScopeChain> {
-    switch (resource) {
+    const effective: Resource = hint?.resolveAs ?? resource;
+    // The guard only resolves when scopeHint is set; handlers without one do
+    // their own row filtering. A missing hint here is a wiring bug → loud 404.
+    switch (effective) {
       case 'ENTRY': {
         const id = this.resourceId(hint, req);
         if (!id) throw new NotFoundException('Entry id is required');

@@ -6,7 +6,9 @@ import { validate } from './config/env.validation';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AuthGuard } from './modules/auth/guards/auth.guard';
+import { EntriesModule } from './modules/entries/entries.module';
 import { RBACModule } from './modules/rbac/rbac.module';
+import { StorageModule } from './modules/storage/storage.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 
@@ -23,6 +25,8 @@ import { RedisModule } from './redis/redis.module';
     HealthModule,
     AuthModule,
     RBACModule,
+    StorageModule,
+    EntriesModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AuthGuard }],
 })

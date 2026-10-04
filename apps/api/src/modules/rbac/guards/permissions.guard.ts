@@ -48,13 +48,21 @@ export class PermissionsGuard implements CanActivate {
     }
 
     const grants = await this.permissions.getEffectiveGrants(req.user.id);
+    const matching = grants.filter(
+      (g) => g.action === required.action && g.resource === required.resource,
+    );
+    if (matching.length === 0) {
+      throw new ForbiddenException('Insufficient permissions');
+    }
+
+    // No scopeHint → no scope constraint. The handler filters rows itself.
+    if (!required.scopeHint) return true;
+
     const targetChain = await this.scopes.resolve(required.resource, required.scopeHint, req);
 
     // TODO(perf): if grants array grows >100, switch to a Set keyed by
     // `${action}:${resource}:${scopeType}:${scopeId}`
-    for (const grant of grants) {
-      if (grant.action !== required.action) continue;
-      if (grant.resource !== required.resource) continue;
+    for (const grant of matching) {
       if (grant.scopeType === 'GROUP') return true;
       for (const scope of targetChain) {
         if (grant.scopeType === scope.scopeType && grant.scopeId === scope.scopeId) return true;

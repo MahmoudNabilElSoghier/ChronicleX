@@ -1,0 +1,340 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import type { Action } from '../../generated/prisma/client';
+import type { Prisma } from '../../generated/prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+import { PermissionsService } from '../rbac/permissions.service';
+import type { Grant, ScopeChain } from '../rbac/types';
+import { StorageService } from '../storage/storage.service';
+import type { ListEntriesDto } from './dto/list-entries.dto';
+import type { UpdateEntryDto } from './dto/update-entry.dto';
+import type { UploadEntryDto } from './dto/upload-entry.dto';
+import { parseSerialFromFilename, validatePdfMagicBytes } from './serial.utils';
+
+export interface Actor {
+  userId: string;
+  ip: string | null;
+  userAgent: string | null;
+}
+
+@Injectable()
+export class EntriesService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+    private readonly permissions: PermissionsService,
+  ) {}
+
+  private async audit(
+    action: Action,
+    resourceId: string,
+    actor: Actor,
+    oldValues?: Record<string, unknown>,
+    newValues?: Record<string, unknown>,
+  ): Promise<void> {
+    await this.prisma.auditLog.create({
+      data: {
+        userId: actor.userId,
+        action,
+        resource: 'ENTRY',
+        resourceId,
+        ...(oldValues !== undefined ? { oldValues: oldValues as Prisma.InputJsonValue } : {}),
+        ...(newValues !== undefined ? { newValues: newValues as Prisma.InputJsonValue } : {}),
+        ipAddress: actor.ip,
+        userAgent: actor.userAgent,
+      },
+    });
+  }
+
+  /** Grant-scoped WHERE for list queries. GROUP ENTRY:VIEW skips the clause. */
+  async buildScopeWhere(userId: string): Promise<Prisma.EntryWhereInput> {
+    const grants = await this.permissions.getEffectiveGrants(userId);
+    const view = grants.filter((g) => g.action === 'VIEW' && g.resource === 'ENTRY');
+    if (view.length === 0) {
+      throw new ForbiddenException('Insufficient permissions');
+    }
+    if (view.some((g) => g.scopeType === 'GROUP')) {
+      return {};
+    }
+    const projectIds = view.filter((g) => g.scopeType === 'PROJECT').map((g) => g.scopeId);
+    const companyIds = view.filter((g) => g.scopeType === 'COMPANY').map((g) => g.scopeId);
+    const or: Prisma.EntryWhereInput[] = [];
+    if (projectIds.length > 0) or.push({ projectId: { in: projectIds } });
+    if (companyIds.length > 0) or.push({ companyId: { in: companyIds } });
+    if (or.length === 0) {
+      throw new ForbiddenException('Insufficient permissions');
+    }
+    return { OR: or };
+  }
+
+  private hasGrant(
+    grants: Grant[],
+    action: Action,
+    chain: ScopeChain,
+  ): boolean {
+    for (const g of grants) {
+      if (g.action !== action || g.resource !== 'ENTRY') continue;
+      if (g.scopeType === 'GROUP') return true;
+      if (chain.some((s) => s.scopeType === g.scopeType && s.scopeId === g.scopeId)) return true;
+    }
+    return false;
+  }
+
+  async upload(
+    dto: UploadEntryDto,
+    file: Express.Multer.File | undefined,
+    actor: Actor,
+  ): Promise<Record<string, unknown>> {
+    if (!file) {
+      throw new BadRequestException('PDF file is required');
+    }
+    if (!validatePdfMagicBytes(file.buffer)) {
+      throw new BadRequestException('File content is not a valid PDF');
+    }
+    const { serial, typePrefix, counter } = parseSerialFromFilename(file.originalname);
+
+    const project = await this.prisma.project.findUnique({
+      where: { id: dto.projectId },
+      include: { company: true },
+    });
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+    if (project.companyId !== dto.companyId) {
+      throw new BadRequestException('Project does not belong to the given company');
+    }
+
+    const fileHash = createHash('sha256').update(file.buffer).digest('hex');
+
+    const dupe = await this.prisma.entry.findUnique({
+      where: { companyId_year_serial: { companyId: dto.companyId, year: dto.year, serial } },
+      select: { id: true },
+    });
+    if (dupe) {
+      throw new ConflictException({
+        code: 'DUPLICATE_SERIAL',
+        message: 'Serial already exists for this company and year',
+        existingEntryId: dupe.id,
+      });
+    }
+    const dupeFile = await this.prisma.entry.findFirst({
+      where: { fileHash, deletedAt: null },
+      select: { id: true },
+    });
+    if (dupeFile) {
+      throw new ConflictException({
+        code: 'DUPLICATE_FILE',
+        message: 'Identical file already archived',
+        existingEntryId: dupeFile.id,
+      });
+    }
+
+    const fileKey = `${project.company.code}/${project.code}/${dto.year}/${serial}.pdf`;
+    await this.storage.putObject(fileKey, file.buffer, 'application/pdf');
+
+    const entry = await this.prisma.entry.create({
+      data: {
+        companyId: dto.companyId,
+        projectId: dto.projectId,
+        year: dto.year,
+        serial,
+        typePrefix,
+        counter,
+        fileKey,
+        fileName: file.originalname,
+        fileSize: file.size,
+        mimeType: file.mimetype,
+        fileHash,
+        uploadedBy: actor.userId,
+      },
+    });
+    await this.audit(
+      'CREATE',
+      entry.id,
+      actor,
+      undefined,
+      {
+        serial,
+        year: dto.year,
+        companyId: dto.companyId,
+        projectId: dto.projectId,
+        fileName: file.originalname,
+        fileSize: file.size,
+      },
+    );
+    return {
+      id: entry.id,
+      companyId: entry.companyId,
+      projectId: entry.projectId,
+      year: entry.year,
+      serial: entry.serial,
+      typePrefix: entry.typePrefix,
+      counter: entry.counter,
+      fileName: entry.fileName,
+      fileSize: entry.fileSize,
+      mimeType: entry.mimeType,
+      fileHash: entry.fileHash,
+      createdAt: entry.createdAt,
+    };
+  }
+
+  async list(query: ListEntriesDto, actor: Actor): Promise<Record<string, unknown>> {
+    const scopeWhere = await this.buildScopeWhere(actor.userId);
+
+    if (query.includeDeleted) {
+      const grants = await this.permissions.getEffectiveGrants(actor.userId);
+      const canSeeDeleted = grants.some((g) => g.action === 'DELETE' && g.resource === 'ENTRY');
+      if (!canSeeDeleted) {
+        throw new ForbiddenException('Insufficient permissions');
+      }
+    }
+
+    const and: Prisma.EntryWhereInput[] = [scopeWhere];
+    if (query.companyId) and.push({ companyId: query.companyId });
+    if (query.projectId) and.push({ projectId: query.projectId });
+    if (query.year !== undefined) and.push({ year: query.year });
+    if (query.typePrefix) and.push({ typePrefix: query.typePrefix });
+    if (query.serial) and.push({ serial: query.serial });
+    if (query.q) and.push({ fileName: { contains: query.q, mode: 'insensitive' } });
+    if (!query.includeDeleted) and.push({ deletedAt: null });
+
+    const limit = query.limit;
+    const rows = await this.prisma.entry.findMany({
+      where: { AND: and },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+      take: limit + 1,
+    });
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+    const last = items.length > 0 ? items[items.length - 1] : undefined;
+    return {
+      items,
+      nextCursor: hasMore && last ? last.id : null,
+      hasMore,
+    };
+  }
+
+  async findOne(id: string): Promise<Record<string, unknown>> {
+    const entry = await this.prisma.entry.findFirst({
+      where: { id, deletedAt: null },
+      include: {
+        company: { select: { code: true, nameAr: true, nameEn: true } },
+        project: { select: { code: true, nameAr: true, nameEn: true } },
+      },
+    });
+    if (!entry) {
+      throw new NotFoundException('Entry not found');
+    }
+    return entry as unknown as Record<string, unknown>;
+  }
+
+  async getStreamTarget(id: string): Promise<{ id: string; fileKey: string; fileSize: number; serial: string }> {
+    const entry = await this.prisma.entry.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, fileKey: true, fileSize: true, serial: true },
+    });
+    if (!entry) {
+      throw new NotFoundException('Entry not found');
+    }
+    return entry;
+  }
+
+  async openStream(
+    target: { id: string; fileKey: string },
+    range: { start: number; end?: number } | undefined,
+    actor: Actor,
+  ): Promise<NodeJS.ReadableStream> {
+    const stream = await this.storage.getObjectStream(target.fileKey, range);
+    void this.audit('VIEW', target.id, actor, undefined, { event: 'FILE_VIEWED' }).catch(
+      () => undefined,
+    );
+    return stream;
+  }
+
+  async update(id: string, dto: UpdateEntryDto, actor: Actor): Promise<Record<string, unknown>> {
+    if (dto.projectId === undefined && dto.year === undefined) {
+      throw new BadRequestException('At least one of projectId or year is required');
+    }
+    const entry = await this.prisma.entry.findFirst({ where: { id, deletedAt: null } });
+    if (!entry) {
+      throw new NotFoundException('Entry not found');
+    }
+
+    const data: { projectId?: string; year?: number } = {};
+    if (dto.projectId !== undefined && dto.projectId !== entry.projectId) {
+      const project = await this.prisma.project.findUnique({ where: { id: dto.projectId } });
+      if (!project) {
+        throw new NotFoundException('Project not found');
+      }
+      if (project.companyId !== entry.companyId) {
+        throw new BadRequestException('Project does not belong to the entry company');
+      }
+      const grants = await this.permissions.getEffectiveGrants(actor.userId);
+      const chain: ScopeChain = [
+        { scopeType: 'PROJECT', scopeId: project.id },
+        { scopeType: 'COMPANY', scopeId: project.companyId },
+        { scopeType: 'GROUP', scopeId: '' },
+      ];
+      if (!this.hasGrant(grants, 'UPDATE', chain)) {
+        throw new ForbiddenException('Insufficient permissions for the target project');
+      }
+      data.projectId = dto.projectId;
+    }
+    if (dto.year !== undefined && dto.year !== entry.year) {
+      const clash = await this.prisma.entry.findUnique({
+        where: {
+          companyId_year_serial: { companyId: entry.companyId, year: dto.year, serial: entry.serial },
+        },
+        select: { id: true },
+      });
+      if (clash && clash.id !== entry.id) {
+        throw new ConflictException({
+          code: 'DUPLICATE_SERIAL',
+          message: 'Serial already exists for this company and year',
+          existingEntryId: clash.id,
+        });
+      }
+      data.year = dto.year;
+    }
+
+    const updated = await this.prisma.entry.update({ where: { id }, data });
+    await this.audit('UPDATE', id, actor, entry as unknown as Record<string, unknown>, {
+      ...(data.projectId !== undefined ? { projectId: data.projectId } : {}),
+      ...(data.year !== undefined ? { year: data.year } : {}),
+    });
+    return updated as unknown as Record<string, unknown>;
+  }
+
+  async remove(id: string, actor: Actor): Promise<Record<string, unknown>> {
+    const entry = await this.prisma.entry.findFirst({ where: { id, deletedAt: null } });
+    if (!entry) {
+      throw new NotFoundException('Entry not found');
+    }
+    const deleted = await this.prisma.entry.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+    await this.audit('DELETE', id, actor, entry as unknown as Record<string, unknown>);
+    return { id: deleted.id, deletedAt: deleted.deletedAt };
+  }
+
+  async restore(id: string, actor: Actor): Promise<Record<string, unknown>> {
+    const entry = await this.prisma.entry.findUnique({ where: { id } });
+    if (!entry) {
+      throw new NotFoundException('Entry not found');
+    }
+    if (!entry.deletedAt) {
+      throw new BadRequestException('Entry is not deleted');
+    }
+    const restored = await this.prisma.entry.update({ where: { id }, data: { deletedAt: null } });
+    await this.audit('RESTORE', id, actor, undefined, { restoredAt: restored.updatedAt });
+    return restored as unknown as Record<string, unknown>;
+  }
+}

@@ -52,6 +52,26 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   COOKIE_DOMAIN = 'localhost';
+
+  @IsString()
+  @IsNotEmpty()
+  MINIO_ENDPOINT!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  MINIO_ACCESS_KEY!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  MINIO_SECRET_KEY!: string;
+
+  @IsOptional()
+  @IsString()
+  MINIO_BUCKET = 'chroniclex-archive';
+
+  @IsOptional()
+  @IsString()
+  MINIO_REGION = 'us-east-1';
 }
 
 export function validate(config: Record<string, unknown>): EnvironmentVariables {
