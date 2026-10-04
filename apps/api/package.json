@@ -12,6 +12,7 @@
     "lint": "eslint src test",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "jest --passWithNoTests",
+    "test:e2e": "jest --config jest-e2e.config.cjs --runInBand --passWithNoTests",
     "keys:generate": "node scripts/generate-keys.js"
   },
   "dependencies": {

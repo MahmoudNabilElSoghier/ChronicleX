@@ -10,7 +10,11 @@ import { RedisModule } from './redis/redis.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate }),
-    ThrottlerModule.forRoot([{ ttl: 900, limit: 5 }]),
+    ThrottlerModule.forRoot([
+      { name: 'default', ttl: 60, limit: 100 },
+      { name: 'login-account', ttl: 900, limit: 5 },
+      { name: 'login-ip', ttl: 900, limit: 20 },
+    ]),
     PrismaModule,
     RedisModule,
     HealthModule,

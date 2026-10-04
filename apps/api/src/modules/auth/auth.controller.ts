@@ -61,7 +61,10 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @UseGuards(LoginThrottlerGuard)
-  @Throttle({ default: { limit: 5, ttl: 900 } })
+  @Throttle({
+    'login-account': { limit: 5, ttl: 900 },
+    'login-ip': { limit: 20, ttl: 900 },
+  })
   async login(
     @Body() dto: LoginDto,
     @Ip() ip: string,
