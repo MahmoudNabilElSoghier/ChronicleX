@@ -1,0 +1,34 @@
+# deps / build
+node_modules/
+dist/
+.next/
+out/
+coverage/
+next-env.d.ts
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# keys (RS256 PEMs — never commit)
+apps/api/keys/*.pem
+!apps/api/keys/.gitkeep
+
+# prisma client codegen (reproducible via `prisma generate`)
+apps/api/src/generated/
+
+# minio data / pgdata (local)
+data/
