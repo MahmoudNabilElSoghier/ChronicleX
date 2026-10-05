@@ -81,11 +81,8 @@ describe('EntriesService', () => {
     expect(res.serial).toBe('6200000000');
     expect(res.typePrefix).toBe('62');
     expect(res.fileHash).toHaveLength(64);
-    expect(prisma.auditLog.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ action: 'CREATE', resource: 'ENTRY' }),
-      }),
-    );
+    // CREATE audit is the interceptor's job (see audit.interceptor.spec).
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
   });
 
   it('upload duplicate serial → 409 DUPLICATE_SERIAL', async () => {
@@ -253,29 +250,24 @@ describe('EntriesService', () => {
     const row = { id: 'e1', fileKey: '2000/REHAB/2025/6200000000.pdf', deletedAt: null };
     prisma.entry.findFirst.mockResolvedValue(row);
     prisma.entry.update.mockResolvedValue({ id: 'e1', deletedAt: new Date() });
-    const res = (await svc.remove('e1', ACTOR)) as Record<string, unknown>;
+    const res = (await svc.remove('e1')) as Record<string, unknown>;
     expect(res.id).toBe('e1');
     expect(res.deletedAt).toBeDefined();
-    expect(prisma.auditLog.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ action: 'DELETE', oldValues: row }),
-      }),
-    );
+    // DELETE audit is the interceptor's job (see audit.interceptor.spec).
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
   });
 
   it('restore clears deletedAt', async () => {
     prisma.entry.findUnique.mockResolvedValue({ id: 'e1', deletedAt: new Date() });
     prisma.entry.update.mockResolvedValue({ id: 'e1', deletedAt: null, updatedAt: new Date() });
-    const res = (await svc.restore('e1', ACTOR)) as Record<string, unknown>;
+    const res = (await svc.restore('e1')) as Record<string, unknown>;
     expect(res.deletedAt).toBeNull();
-    expect(prisma.auditLog.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ action: 'RESTORE' }) }),
-    );
   });
 
   it('openStream fires FILE_VIEWED audit without blocking', async () => {
     const { Readable } = await import('node:stream');
     storage.getObjectStream.mockResolvedValue(Readable.from(['%PDF']));
+    prisma.auditLog.create.mockResolvedValue({});
     const stream = await svc.openStream({ id: 'e1', fileKey: 'k' }, undefined, ACTOR);
     expect(stream).toBeDefined();
     await new Promise((r) => setTimeout(r, 10));

@@ -21,9 +21,11 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
+import { Action, Resource } from '../../generated/prisma/client';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
 import type { AuthenticatedUser } from '../auth/types';
+import { Audit } from '../audit/audit.decorator';
 import { PermissionsGuard } from '../rbac/guards/permissions.guard';
 import { ListEntriesDto } from './dto/list-entries.dto';
 import { UpdateEntryDto } from './dto/update-entry.dto';
@@ -59,6 +61,7 @@ export class EntriesController {
   // Service-level requireCreateScope() enforces project-scoped access
   // after multer parses the request.
   @RequirePermission('CREATE', 'ENTRY')
+  @Audit({ action: Action.CREATE, resource: Resource.ENTRY, idParam: null })
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -142,6 +145,7 @@ export class EntriesController {
 
   @Patch(':id')
   @RequirePermission('UPDATE', 'ENTRY', { source: 'params', key: 'id' })
+  @Audit({ action: Action.UPDATE, resource: Resource.ENTRY })
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateEntryDto,
@@ -154,24 +158,16 @@ export class EntriesController {
 
   @Delete(':id')
   @RequirePermission('DELETE', 'ENTRY', { source: 'params', key: 'id' })
-  async remove(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-    @Ip() ip: string,
-    @Headers('user-agent') userAgent: string | undefined,
-  ): Promise<unknown> {
-    return this.entries.remove(id, { userId: user.id, ip, userAgent: userAgent ?? null });
+  @Audit({ action: Action.DELETE, resource: Resource.ENTRY })
+  async remove(@Param('id') id: string): Promise<unknown> {
+    return this.entries.remove(id);
   }
 
   @Post(':id/restore')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('RESTORE', 'ENTRY', { source: 'params', key: 'id' })
-  async restore(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-    @Ip() ip: string,
-    @Headers('user-agent') userAgent: string | undefined,
-  ): Promise<unknown> {
-    return this.entries.restore(id, { userId: user.id, ip, userAgent: userAgent ?? null });
+  @Audit({ action: Action.RESTORE, resource: Resource.ENTRY })
+  async restore(@Param('id') id: string): Promise<unknown> {
+    return this.entries.restore(id);
   }
 }

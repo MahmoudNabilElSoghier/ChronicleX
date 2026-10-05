@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { validate } from './config/env.validation';
 import { HealthModule } from './health/health.module';
+import { AuditInterceptor } from './modules/audit/audit.interceptor';
+import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AuthGuard } from './modules/auth/guards/auth.guard';
 import { EntriesModule } from './modules/entries/entries.module';
@@ -29,8 +31,14 @@ import { RedisModule } from './redis/redis.module';
     AuthModule,
     RBACModule,
     StorageModule,
+    AuditModule,
     EntriesModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: AuthGuard }],
+  providers: [
+    { provide: APP_GUARD, useClass: AuthGuard },
+    // Global interceptors run in registration order. AuditInterceptor is the
+    // only global interceptor; future ones must document ordering here.
+    { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
+  ],
 })
 export class AppModule {}

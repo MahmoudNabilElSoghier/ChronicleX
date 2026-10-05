@@ -6,7 +6,6 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import type { Action } from '../../generated/prisma/client';
 import type { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PermissionsService } from '../rbac/permissions.service';
@@ -31,27 +30,6 @@ export class EntriesService {
     private readonly permissions: PermissionsService,
     private readonly scopes: ScopeMatcher,
   ) {}
-
-  private async audit(
-    action: Action,
-    resourceId: string,
-    actor: Actor,
-    oldValues?: Record<string, unknown>,
-    newValues?: Record<string, unknown>,
-  ): Promise<void> {
-    await this.prisma.auditLog.create({
-      data: {
-        userId: actor.userId,
-        action,
-        resource: 'ENTRY',
-        resourceId,
-        ...(oldValues !== undefined ? { oldValues: oldValues as Prisma.InputJsonValue } : {}),
-        ...(newValues !== undefined ? { newValues: newValues as Prisma.InputJsonValue } : {}),
-        ipAddress: actor.ip,
-        userAgent: actor.userAgent,
-      },
-    });
-  }
 
   /** Grant-scoped WHERE for list queries. GROUP ENTRY:VIEW skips the clause. */
   async buildScopeWhere(userId: string): Promise<Prisma.EntryWhereInput> {
@@ -135,20 +113,6 @@ export class EntriesService {
         uploadedBy: actor.userId,
       },
     });
-    await this.audit(
-      'CREATE',
-      entry.id,
-      actor,
-      undefined,
-      {
-        serial,
-        year: dto.year,
-        companyId: dto.companyId,
-        projectId: dto.projectId,
-        fileName: file.originalname,
-        fileSize: file.size,
-      },
-    );
     return {
       id: entry.id,
       companyId: entry.companyId,
@@ -233,9 +197,21 @@ export class EntriesService {
     actor: Actor,
   ): Promise<NodeJS.ReadableStream> {
     const stream = await this.storage.getObjectStream(target.fileKey, range);
-    void this.audit('VIEW', target.id, actor, undefined, { event: 'FILE_VIEWED' }).catch(
-      () => undefined,
-    );
+    // Manual audit (documented exception): streaming starts after the response
+    // begins, so the interceptor cannot bracket it. Fire-and-forget.
+    await this.prisma.auditLog
+      .create({
+        data: {
+          userId: actor.userId,
+          action: 'VIEW',
+          resource: 'ENTRY',
+          resourceId: target.id,
+          newValues: { event: 'FILE_VIEWED' },
+          ipAddress: actor.ip,
+          userAgent: actor.userAgent,
+        },
+      })
+      .catch(() => undefined);
     return stream;
   }
 
@@ -284,14 +260,10 @@ export class EntriesService {
     }
 
     const updated = await this.prisma.entry.update({ where: { id }, data });
-    await this.audit('UPDATE', id, actor, entry as unknown as Record<string, unknown>, {
-      ...(data.projectId !== undefined ? { projectId: data.projectId } : {}),
-      ...(data.year !== undefined ? { year: data.year } : {}),
-    });
     return updated as unknown as Record<string, unknown>;
   }
 
-  async remove(id: string, actor: Actor): Promise<Record<string, unknown>> {
+  async remove(id: string): Promise<Record<string, unknown>> {
     const entry = await this.prisma.entry.findFirst({ where: { id, deletedAt: null } });
     if (!entry) {
       throw new NotFoundException('Entry not found');
@@ -300,11 +272,10 @@ export class EntriesService {
       where: { id },
       data: { deletedAt: new Date() },
     });
-    await this.audit('DELETE', id, actor, entry as unknown as Record<string, unknown>);
     return { id: deleted.id, deletedAt: deleted.deletedAt };
   }
 
-  async restore(id: string, actor: Actor): Promise<Record<string, unknown>> {
+  async restore(id: string): Promise<Record<string, unknown>> {
     const entry = await this.prisma.entry.findUnique({ where: { id } });
     if (!entry) {
       throw new NotFoundException('Entry not found');
@@ -313,7 +284,6 @@ export class EntriesService {
       throw new BadRequestException('Entry is not deleted');
     }
     const restored = await this.prisma.entry.update({ where: { id }, data: { deletedAt: null } });
-    await this.audit('RESTORE', id, actor, undefined, { restoredAt: restored.updatedAt });
     return restored as unknown as Record<string, unknown>;
   }
 }
