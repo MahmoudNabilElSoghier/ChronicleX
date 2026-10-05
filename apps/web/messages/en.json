@@ -43,5 +43,96 @@
     "save": "Save",
     "delete": "Delete",
     "confirm": "Confirm"
+  },
+  "entries": {
+    "list": {
+      "title": "Accounting Entries",
+      "upload": "Upload entry",
+      "empty": "No matching entries",
+      "loadMore": "Load more",
+      "loading": "Loading entries...",
+      "error": "Could not load entries",
+      "retry": "Retry"
+    },
+    "filters": {
+      "company": "Company",
+      "project": "Project",
+      "year": "Year",
+      "typePrefix": "Type",
+      "serial": "Serial",
+      "search": "Search by filename",
+      "includeDeleted": "Show deleted",
+      "all": "All",
+      "reset": "Reset filters"
+    },
+    "columns": {
+      "serial": "Serial",
+      "company": "Company",
+      "project": "Project",
+      "year": "Year",
+      "type": "Type",
+      "fileName": "File name",
+      "size": "Size",
+      "createdAt": "Uploaded at"
+    },
+    "actions": {
+      "open": "Options",
+      "view": "View",
+      "download": "Download",
+      "delete": "Delete",
+      "restore": "Restore",
+      "edit": "Edit"
+    },
+    "downloadFailed": "Could not download the file",
+    "pdfError": "Could not display the file",
+    "fileDeleted": "File deleted",
+    "fileDeletedHint": "Restore the entry to view the file again",
+    "downloadFallback": "Download the file instead",
+    "openInNewTab": "Open in new tab",
+    "detail": {
+      "error": "Could not load the entry",
+      "retry": "Retry",
+      "deletedBanner": "This entry is deleted",
+      "tabs": { "metadata": "Metadata", "audit": "Audit trail", "actions": "Actions" },
+      "serial": "Serial",
+      "typePrefix": "Type prefix",
+      "counter": "Counter",
+      "year": "Fiscal year",
+      "fileName": "File name",
+      "fileSize": "File size",
+      "mimeType": "MIME type",
+      "fileHash": "Hash",
+      "company": "Company",
+      "project": "Project",
+      "uploadedBy": "Uploaded by",
+      "createdAt": "Uploaded at"
+    },
+    "edit": {
+      "title": "Edit entry",
+      "save": "Save",
+      "cancel": "Cancel"
+    },
+    "editDone": "Changes saved",
+    "editFailed": "Could not save",
+    "deleteConfirm": {
+      "title": "Delete entry",
+      "body": "The entry will be removed from the list, but can be restored later.",
+      "cancel": "Cancel",
+      "confirm": "Delete",
+      "done": "Deleted",
+      "failed": "Could not delete"
+    },
+    "restoreDone": "Restored",
+    "restoreFailed": "Could not restore",
+    "audit": {
+      "empty": "No audit history",
+      "showDiff": "Show diff",
+      "hideDiff": "Hide diff",
+      "created": "Entry created",
+      "updated": "Entry updated",
+      "deleted": "Entry deleted",
+      "restored": "Entry restored",
+      "viewed": "File viewed"
+    }
   }
 }

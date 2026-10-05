@@ -40,10 +40,7 @@ export const usersApi = {
   list: (query: string): Promise<unknown> => api.request(`/users${query}`),
 };
 
-export const entriesApi = {
-  // Phase 7b-2 / 7b-3
-  list: (query: string): Promise<unknown> => api.request(`/entries${query}`),
-};
+export { entriesApi, catalogApi } from './entries';
 
 export const auditApi = {
   // Phase 7b-4

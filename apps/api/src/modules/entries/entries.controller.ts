@@ -95,10 +95,22 @@ export class EntriesController {
     return this.entries.list(query, { userId: user.id, ip, userAgent: userAgent ?? null });
   }
 
+  @Get('years')
+  @RequirePermission('VIEW', 'ENTRY')
+  async years(@CurrentUser() user: AuthenticatedUser): Promise<unknown> {
+    return { years: await this.entries.years(user.id) };
+  }
+
   @Get(':id')
   @RequirePermission('VIEW', 'ENTRY', { source: 'params', key: 'id' })
   async findOne(@Param('id') id: string): Promise<unknown> {
     return this.entries.findOne(id);
+  }
+
+  @Get(':id/audit')
+  @RequirePermission('VIEW', 'ENTRY', { source: 'params', key: 'id' })
+  async getAudit(@Param('id') id: string): Promise<unknown> {
+    return this.entries.getAudit(id);
   }
 
   @Get(':id/file')

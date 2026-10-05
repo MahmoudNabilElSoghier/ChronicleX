@@ -1,6 +1,7 @@
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import { ThemeProvider } from 'next-themes';
+import { NuqsAdapter } from 'nuqs/adapters/next/app';
 import { Toaster } from 'sonner';
 import { AuthProvider } from '@/lib/auth/auth-context';
 import { QueryProvider } from '@/lib/query-client';
@@ -19,12 +20,14 @@ export default async function LocaleLayout({
     <html lang={locale} dir={dir} suppressHydrationWarning>
       <body>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          <NuqsAdapter>
           <QueryProvider>
             <AuthProvider>
               <NextIntlClientProvider messages={messages}>{children}</NextIntlClientProvider>
               <Toaster richColors position="top-center" />
             </AuthProvider>
           </QueryProvider>
+          </NuqsAdapter>
         </ThemeProvider>
       </body>
     </html>

@@ -43,5 +43,96 @@
     "save": "حفظ",
     "delete": "حذف",
     "confirm": "تأكيد"
+  },
+  "entries": {
+    "list": {
+      "title": "القيود المحاسبية",
+      "upload": "رفع قيد",
+      "empty": "لا توجد قيود مطابقة",
+      "loadMore": "عرض المزيد",
+      "loading": "جاري تحميل القيود...",
+      "error": "تعذر تحميل القيود",
+      "retry": "إعادة المحاولة"
+    },
+    "filters": {
+      "company": "الشركة",
+      "project": "المشروع",
+      "year": "السنة",
+      "typePrefix": "النوع",
+      "serial": "رقم القيد",
+      "search": "بحث باسم الملف",
+      "includeDeleted": "إظهار المحذوفة",
+      "all": "الكل",
+      "reset": "مسح الفلاتر"
+    },
+    "columns": {
+      "serial": "الرقم",
+      "company": "الشركة",
+      "project": "المشروع",
+      "year": "السنة",
+      "type": "النوع",
+      "fileName": "اسم الملف",
+      "size": "الحجم",
+      "createdAt": "تاريخ الرفع"
+    },
+    "actions": {
+      "open": "خيارات",
+      "view": "عرض",
+      "download": "تنزيل",
+      "delete": "حذف",
+      "restore": "استرجاع",
+      "edit": "تعديل"
+    },
+    "downloadFailed": "تعذر تنزيل الملف",
+    "pdfError": "تعذر عرض الملف",
+    "fileDeleted": "الملف محذوف",
+    "fileDeletedHint": "استرجع القيد لعرض الملف مرة أخرى",
+    "downloadFallback": "تنزيل الملف بدلاً من ذلك",
+    "openInNewTab": "فتح في تبويب جديد",
+    "detail": {
+      "error": "تعذر تحميل القيد",
+      "retry": "إعادة المحاولة",
+      "deletedBanner": "هذا القيد محذوف",
+      "tabs": { "metadata": "البيانات", "audit": "سجل التدقيق", "actions": "إجراءات" },
+      "serial": "رقم القيد",
+      "typePrefix": "بادئة النوع",
+      "counter": "المسلسل",
+      "year": "السنة المالية",
+      "fileName": "اسم الملف",
+      "fileSize": "حجم الملف",
+      "mimeType": "نوع الملف",
+      "fileHash": "البصمة",
+      "company": "الشركة",
+      "project": "المشروع",
+      "uploadedBy": "رفعه",
+      "createdAt": "تاريخ الرفع"
+    },
+    "edit": {
+      "title": "تعديل القيد",
+      "save": "حفظ",
+      "cancel": "إلغاء"
+    },
+    "editDone": "تم حفظ التعديلات",
+    "editFailed": "تعذر الحفظ",
+    "deleteConfirm": {
+      "title": "حذف القيد",
+      "body": "سيتم حذف القيد من القائمة، لكن يمكن استرجاعه لاحقاً.",
+      "cancel": "إلغاء",
+      "confirm": "حذف",
+      "done": "تم الحذف",
+      "failed": "تعذر الحذف"
+    },
+    "restoreDone": "تم الاسترجاع",
+    "restoreFailed": "تعذر الاسترجاع",
+    "audit": {
+      "empty": "لا يوجد سجل تدقيق",
+      "showDiff": "عرض الفروقات",
+      "hideDiff": "إخفاء الفروقات",
+      "created": "إنشاء القيد",
+      "updated": "تعديل القيد",
+      "deleted": "حذف القيد",
+      "restored": "استرجاع القيد",
+      "viewed": "عرض الملف"
+    }
   }
 }

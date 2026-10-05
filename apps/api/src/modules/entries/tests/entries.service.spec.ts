@@ -30,8 +30,9 @@ describe('EntriesService', () => {
       findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      groupBy: jest.fn(),
     },
-    auditLog: { create: jest.fn() },
+    auditLog: { create: jest.fn(), findMany: jest.fn() },
   };
   const storage = {
     putObject: jest.fn(),
@@ -283,5 +284,64 @@ describe('EntriesService', () => {
 
   it('hash is stable sha256 of the buffer', () => {
     expect(createHash('sha256').update(Buffer.from('%PDF')).digest('hex')).toHaveLength(64);
+  });
+
+  it('years returns distinct scoped years, newest first', async () => {
+    permissions.getEffectiveGrants.mockResolvedValue([
+      { action: 'VIEW', resource: 'ENTRY', scopeType: 'COMPANY', scopeId: 'c1' },
+    ]);
+    prisma.entry.groupBy = jest.fn().mockResolvedValue([{ year: 2024 }, { year: 2023 }]);
+    await expect(svc.years('u1')).resolves.toEqual([2024, 2023]);
+    expect(prisma.entry.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        by: ['year'],
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([{ OR: [{ companyId: { in: ['c1'] } }] }]),
+        }),
+      }),
+    );
+  });
+
+  it('findOne returns soft-deleted entries with deletedAt set', async () => {
+    const row = { id: 'e9', deletedAt: new Date('2025-03-01'), serial: '6200000000' };
+    prisma.entry.findFirst.mockResolvedValue(row);
+    const res = (await svc.findOne('e9')) as Record<string, unknown>;
+    expect(res.deletedAt).toBeDefined();
+    expect(prisma.entry.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'e9' } }),
+    );
+  });
+
+  it('getAudit returns history sorted desc, limit 50, with actor names', async () => {
+    prisma.auditLog.findMany.mockResolvedValue([
+      {
+        id: 'a2', action: 'DELETE', resource: 'ENTRY', userId: 'u1',
+        user: { nameAr: 'مدير' }, newValues: null, oldValues: { id: 'e1' },
+        createdAt: new Date('2025-02-01'),
+      },
+      {
+        id: 'a1', action: 'CREATE', resource: 'ENTRY', userId: 'u1',
+        user: { nameAr: 'مدير' }, newValues: { event: 'x' }, oldValues: null,
+        createdAt: new Date('2025-01-01'),
+      },
+    ]);
+    const res = (await svc.getAudit('e1')) as { items: Array<Record<string, unknown>> };
+    expect(prisma.auditLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { resource: 'ENTRY', resourceId: 'e1' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 50,
+      }),
+    );
+    expect(res.items.map((i) => i.id)).toEqual(['a2', 'a1']);
+    expect(res.items[0]).toMatchObject({ userNameAr: 'مدير', event: 'DELETE' });
+  });
+
+  it('getAudit works for soft-deleted entries (history is forever)', async () => {
+    prisma.auditLog.findMany.mockResolvedValue([]);
+    await svc.getAudit('deleted-id');
+    expect(prisma.auditLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { resource: 'ENTRY', resourceId: 'deleted-id' } }),
+    );
   });
 });

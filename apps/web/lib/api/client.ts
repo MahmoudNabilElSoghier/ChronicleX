@@ -68,6 +68,26 @@ class ApiClient {
     return (await res.json()) as T;
   }
 
+  async fetchBlob(path: string, init: RequestInit = {}, retried = false): Promise<Blob> {
+    const headers = new Headers(init.headers);
+    if (this.accessToken) {
+      headers.set('Authorization', `Bearer ${this.accessToken}`);
+    }
+    const res = await fetch(`${baseUrl()}${path}`, { ...init, headers, credentials: 'include' });
+    if (res.status === 401 && !retried) {
+      try {
+        await this.refreshOnce();
+      } catch {
+        throw new ApiError(401, 'UNAUTHENTICATED', 'Session expired');
+      }
+      return this.fetchBlob(path, init, true);
+    }
+    if (!res.ok) {
+      await this.parseError(res);
+    }
+    return res.blob();
+  }
+
   private async refreshOnce(): Promise<string> {
     if (this.refreshPromise) {
       return this.refreshPromise;

@@ -36,6 +36,46 @@ export class EntriesService {
     return this.scopes.buildEntryWhere(userId);
   }
 
+  /** Distinct entry years visible to the caller, newest first. */
+  async years(userId: string): Promise<number[]> {
+    const where = { AND: [await this.buildScopeWhere(userId), { deletedAt: null }] };
+    const rows = await this.prisma.entry.groupBy({
+      by: ['year'],
+      where,
+      orderBy: { year: 'desc' },
+    });
+    return rows.map((r) => r.year);
+  }
+
+  /** Audit history for one entry (historical — includes deleted rows). */
+  async getAudit(id: string): Promise<Record<string, unknown>> {
+    const rows = await this.prisma.auditLog.findMany({
+      where: { resource: 'ENTRY', resourceId: id },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 50,
+      include: { user: { select: { nameAr: true } } },
+    });
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        action: r.action,
+        resource: r.resource,
+        userId: r.userId,
+        userNameAr: r.user?.nameAr ?? null,
+        event:
+          r.newValues !== null &&
+          typeof r.newValues === 'object' &&
+          !Array.isArray(r.newValues) &&
+          typeof (r.newValues as Record<string, unknown>).event === 'string'
+            ? (r.newValues as Record<string, unknown>).event
+            : r.action,
+        createdAt: r.createdAt,
+        oldValues: r.oldValues,
+        newValues: r.newValues,
+      })),
+    };
+  }
+
   async upload(
     dto: UploadEntryDto,
     file: Express.Multer.File | undefined,
@@ -167,8 +207,11 @@ export class EntriesService {
   }
 
   async findOne(id: string): Promise<Record<string, unknown>> {
+    // Soft-deleted rows ARE returned (deletedAt visible): the detail page
+    // renders its deleted banner + restore action from this payload.
+    // File access stays blocked — see getStreamTarget().
     const entry = await this.prisma.entry.findFirst({
-      where: { id, deletedAt: null },
+      where: { id },
       include: {
         company: { select: { code: true, nameAr: true, nameEn: true } },
         project: { select: { code: true, nameAr: true, nameEn: true } },
