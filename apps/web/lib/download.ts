@@ -1,3 +1,8 @@
+/** Release a blob URL on the next frame + delay (Safari-safe). */
+function deferredRevoke(url: string): void {
+  requestAnimationFrame(() => setTimeout(() => URL.revokeObjectURL(url), 1000));
+}
+
 /** Trigger a browser download and release everything afterwards. */
 export function saveBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
@@ -7,12 +12,12 @@ export function saveBlob(blob: Blob, filename: string): void {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  deferredRevoke(url);
 }
 
 /** Open a blob in a new tab and release the URL shortly after. */
 export function openBlob(blob: Blob): void {
   const url = URL.createObjectURL(blob);
   window.open(url, '_blank');
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  deferredRevoke(url);
 }

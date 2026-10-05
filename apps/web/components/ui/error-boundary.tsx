@@ -22,8 +22,11 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     return { failed: true };
   }
 
-  componentDidCatch(): void {
-    // Intentionally silent: the fallback UI is the report.
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
+    if (process.env.NODE_ENV === 'development') {
+      // eslint-disable-next-line no-console
+      console.error('[ErrorBoundary]', error, errorInfo);
+    }
   }
 
   render(): React.ReactNode {

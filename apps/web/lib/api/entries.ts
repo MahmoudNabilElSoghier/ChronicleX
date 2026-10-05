@@ -1,4 +1,37 @@
-import { api } from './client';
+import { api, apiBaseUrl } from './client';
+import { xhrUpload } from '@/lib/upload/xhr-upload';
+
+export interface BulkUploadAccepted {
+  jobId: string;
+  status: string;
+  total: number;
+  immediateFailures: number;
+  statusUrl: string;
+}
+
+export interface BulkResult {
+  fileUuid: string;
+  originalName: string;
+  status: 'ok' | 'error';
+  entryId?: string;
+  existingEntryId?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  serial?: string;
+  typePrefix?: string;
+}
+
+export interface BulkStatus {
+  jobId: string;
+  status: 'queued' | 'processing' | 'done' | 'failed' | 'cancelled';
+  total: number;
+  processed: number;
+  succeeded: number;
+  failed: number;
+  createdAt: string;
+  results: BulkResult[];
+  resultsTruncated: boolean;
+}
 
 export interface EntryListItem {
   id: string;
@@ -99,4 +132,21 @@ export const catalogApi = {
   projects: (companyId?: string): Promise<{ items: CatalogItem[] }> =>
     api.request<{ items: CatalogItem[] }>(companyId ? `/projects?companyId=${companyId}` : '/projects'),
   years: (): Promise<{ years: number[] }> => api.request<{ years: number[] }>('/entries/years'),
+};
+
+export const uploadApi = {
+  single: (formData: FormData, onProgress: (loaded: number, total: number) => void): Promise<EntryDetail> =>
+    xhrUpload<EntryDetail>({
+      url: `${apiBaseUrl()}/entries`,
+      method: 'POST',
+      headers: { Authorization: `Bearer ${api.getAccessToken() ?? ''}` },
+      body: formData,
+      onProgress,
+    }),
+  bulk: (formData: FormData): Promise<BulkUploadAccepted> =>
+    api.request<BulkUploadAccepted>('/entries/bulk-upload', { method: 'POST', body: formData }),
+  bulkStatus: (jobId: string): Promise<BulkStatus> =>
+    api.request<BulkStatus>(`/entries/bulk-upload/${jobId}`),
+  bulkCancel: (jobId: string): Promise<void> =>
+    api.request<void>(`/entries/bulk-upload/${jobId}/cancel`, { method: 'POST' }),
 };

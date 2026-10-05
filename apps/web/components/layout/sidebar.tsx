@@ -6,28 +6,32 @@ import { useTranslations } from 'next-intl';
 import { FileText, Home, ScrollText, Upload, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth/auth-context';
+import { useActiveJobs } from '@/lib/upload/active-jobs-context';
 
 export function Sidebar(): JSX.Element {
   const t = useTranslations('nav');
   const pathname = usePathname();
   const { user } = useAuth();
+  const pendingJobs = useActiveJobs()?.jobs.length ?? 0;
   const roleNames = new Set((user?.roles ?? []).map((r) => r.name));
 
   const items = [
-    { href: '/dashboard', label: t('dashboard'), icon: Home, show: true },
-    { href: '/entries', label: t('entries'), icon: FileText, show: true },
-    { href: '/upload', label: t('upload'), icon: Upload, show: true },
+    { href: '/dashboard', label: t('dashboard'), icon: Home, show: true, badge: 0 },
+    { href: '/entries', label: t('entries'), icon: FileText, show: true, badge: 0 },
+    { href: '/upload', label: t('upload'), icon: Upload, show: true, badge: pendingJobs },
     {
       href: '/users',
       label: t('users'),
       icon: Users,
       show: roleNames.has('SUPER_ADMIN') || roleNames.has('COMPANY_ADMIN'),
+      badge: 0,
     },
     {
       href: '/audit',
       label: t('audit'),
       icon: ScrollText,
       show: roleNames.has('SUPER_ADMIN'),
+      badge: 0,
     },
   ];
 
@@ -52,6 +56,11 @@ export function Sidebar(): JSX.Element {
             >
               <Icon />
               <span className="hidden md:inline">{item.label}</span>
+              {item.badge > 0 ? (
+                <span className="ms-auto hidden rounded-full bg-primary px-2 py-0.5 text-[11px] font-medium text-primary-foreground md:inline">
+                  {item.badge}
+                </span>
+              ) : null}
             </Link>
           );
         })}

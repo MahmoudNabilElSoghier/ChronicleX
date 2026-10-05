@@ -134,5 +134,60 @@
       "restored": "استرجاع القيد",
       "viewed": "عرض الملف"
     }
+  },
+  "upload": {
+    "title": "رفع القيود",
+    "tabs": { "single": "قيد واحد", "bulk": "رفع متعدد" },
+    "dropzone": "اسحب الملف هنا أو اضغط للاختيار",
+    "dropzoneHint": "PDF فقط، حتى ٥٠ ميجابايت للملف",
+    "company": "الشركة",
+    "project": "المشروع",
+    "year": "السنة المالية",
+    "selectCompany": "اختر الشركة",
+    "selectProject": "اختر المشروع",
+    "retry": "إعادة المحاولة",
+    "cancel": "إلغاء",
+    "single": {
+      "remove": "إزالة",
+      "valid": "✓ ملف صالح",
+      "submit": "رفع القيد",
+      "failed": "فشل الرفع",
+      "success": "تم رفع القيد بنجاح",
+      "viewEntry": "عرض القيد",
+      "uploadAnother": "رفع ملف آخر"
+    },
+    "bulk": {
+      "summary": "{valid} صالح، {invalid} خطأ",
+      "valid": "✓ صالح",
+      "submit": "رفع الكل",
+      "clear": "مسح الكل",
+      "newBatch": "دفعة جديدة",
+      "waiting": "بانتظار المعالجة",
+      "processing": "جاري المعالجة",
+      "done": "✓ تم",
+      "failed": "✗ فشل",
+      "progress": "{processed} / {total}",
+      "finished": "تم رفع {succeeded} من {total}، فشل {failed}"
+    },
+    "errors": {
+      "INVALID_LENGTH": "اسم الملف يجب أن يكون 10 أرقام قبل .pdf",
+      "NON_DIGIT": "اسم الملف يحتوي على أحرف غير رقمية",
+      "BAD_PREFIX": "بادئة غير مسموحة. المسموح: 62، 63، 67",
+      "NO_PDF": "الملف يجب أن يكون PDF",
+      "BAD_EXT": "امتداد الملف غير صحيح. يجب أن يكون .pdf"
+    },
+    "conflicts": {
+      "title": "القيد موجود بالفعل",
+      "serial": "رقم القيد",
+      "company": "الشركة",
+      "project": "المشروع",
+      "year": "السنة",
+      "uploadedBy": "رفعه",
+      "loadFailed": "تعذر تحميل بيانات القيد",
+      "close": "إغلاق",
+      "viewExisting": "عرض القيد الموجود",
+      "duplicateSerial": "الرقم التسلسلي مستخدم بالفعل",
+      "duplicateFile": "هذا الملف مرفوع بالفعل"
+    }
   }
 }

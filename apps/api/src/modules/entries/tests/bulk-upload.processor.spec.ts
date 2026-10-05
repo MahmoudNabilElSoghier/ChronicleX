@@ -93,6 +93,17 @@ describe('BulkUploadProcessor', () => {
     expect(storage.removeObject).toHaveBeenCalled();
   });
 
+  it('duplicate serial result carries existingEntryId', async () => {
+    prisma.entry.findUnique.mockResolvedValue({ id: 'old-entry-9' });
+    await worker.process(jobOf({}));
+    const payload = redis.rpush.mock.calls[0]?.[1] as string;
+    expect(JSON.parse(payload)).toMatchObject({
+      status: 'error',
+      errorCode: 'DUPLICATE_SERIAL',
+      existingEntryId: 'old-entry-9',
+    });
+  });
+
   it('duplicate hash records failure', async () => {
     prisma.entry.findFirst.mockResolvedValue({ id: 'same-bytes' });
     await worker.process(jobOf({}));

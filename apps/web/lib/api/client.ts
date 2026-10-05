@@ -19,9 +19,40 @@ function baseUrl(): string {
   return url.replace(/\/$/, '');
 }
 
+let refreshPromise: Promise<string> | null = null;
+
+/**
+ * Standalone, deduplicated refresh for every transport (fetch + XHR).
+ * Module-level promise so concurrent callers share one refresh round-trip.
+ */
+export async function refreshAccessToken(): Promise<string> {
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${baseUrl()}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        throw new Error('refresh failed');
+      }
+      const body = (await res.json()) as { accessToken: string };
+      api.setAccessToken(body.accessToken);
+      return body.accessToken;
+    } catch {
+      api.setAccessToken(null);
+      throw new ApiError(401, 'UNAUTHENTICATED', 'Session expired');
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
+}
+
 class ApiClient {
   private accessToken: string | null = null;
-  private refreshPromise: Promise<string> | null = null;
 
   setAccessToken(token: string | null): void {
     this.accessToken = token;
@@ -44,7 +75,9 @@ class ApiClient {
 
   async request<T>(path: string, init: RequestOptions = {}, retried = false): Promise<T> {
     const headers = new Headers(init.headers);
-    if (!headers.has('Content-Type') && init.body !== undefined) {
+    // Only JSON bodies get an explicit content type. FormData/Blob must keep
+    // the browser-generated multipart boundary.
+    if (!headers.has('Content-Type') && typeof init.body === 'string') {
       headers.set('Content-Type', 'application/json');
     }
     if (this.accessToken && !init.skipAuth) {
@@ -53,7 +86,7 @@ class ApiClient {
     const res = await fetch(`${baseUrl()}${path}`, { ...init, headers, credentials: 'include' });
     if (res.status === 401 && !init.skipAuth && !retried) {
       try {
-        await this.refreshOnce();
+        await refreshAccessToken();
       } catch {
         throw new ApiError(401, 'UNAUTHENTICATED', 'Session expired');
       }
@@ -76,7 +109,7 @@ class ApiClient {
     const res = await fetch(`${baseUrl()}${path}`, { ...init, headers, credentials: 'include' });
     if (res.status === 401 && !retried) {
       try {
-        await this.refreshOnce();
+        await refreshAccessToken();
       } catch {
         throw new ApiError(401, 'UNAUTHENTICATED', 'Session expired');
       }
@@ -88,31 +121,10 @@ class ApiClient {
     return res.blob();
   }
 
-  private async refreshOnce(): Promise<string> {
-    if (this.refreshPromise) {
-      return this.refreshPromise;
-    }
-    this.refreshPromise = (async () => {
-      try {
-        const res = await fetch(`${baseUrl()}/auth/refresh`, {
-          method: 'POST',
-          credentials: 'include',
-        });
-        if (!res.ok) {
-          throw new Error('refresh failed');
-        }
-        const body = (await res.json()) as { accessToken: string };
-        this.setAccessToken(body.accessToken);
-        return body.accessToken;
-      } catch {
-        this.setAccessToken(null);
-        throw new ApiError(401, 'UNAUTHENTICATED', 'Session expired');
-      } finally {
-        this.refreshPromise = null;
-      }
-    })();
-    return this.refreshPromise;
-  }
 }
 
 export const api = new ApiClient();
+
+export function apiBaseUrl(): string {
+  return baseUrl();
+}

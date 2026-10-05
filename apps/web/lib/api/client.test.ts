@@ -50,4 +50,22 @@ describe('ApiClient', () => {
     expect(err).toBeInstanceOf(ApiError);
     expect(err as ApiError).toMatchObject({ status: 409, code: 'DUPLICATE_SERIAL' });
   });
+
+  it('does NOT set Content-Type for FormData bodies (boundary must survive)', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ jobId: 'j1' }, 202));
+    globalThis.fetch = fetchMock;
+    const form = new FormData();
+    form.append('companyId', 'c1');
+    await api.request('/entries/bulk-upload', { method: 'POST', body: form });
+    const headers = fetchMock.mock.calls[0][1].headers as Headers;
+    expect(headers.get('Content-Type')).toBeNull();
+  });
+
+  it('sets application/json for string bodies', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ ok: true }, 200));
+    globalThis.fetch = fetchMock;
+    await api.request('/auth/login', { method: 'POST', body: JSON.stringify({ a: 1 }), skipAuth: true });
+    const headers = fetchMock.mock.calls[0][1].headers as Headers;
+    expect(headers.get('Content-Type')).toBe('application/json');
+  });
 });

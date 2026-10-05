@@ -134,5 +134,60 @@
       "restored": "Entry restored",
       "viewed": "File viewed"
     }
+  },
+  "upload": {
+    "title": "Upload entries",
+    "tabs": { "single": "Single entry", "bulk": "Bulk upload" },
+    "dropzone": "Drag the file here or click to choose",
+    "dropzoneHint": "PDF only, up to 50 MB per file",
+    "company": "Company",
+    "project": "Project",
+    "year": "Fiscal year",
+    "selectCompany": "Select company",
+    "selectProject": "Select project",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "single": {
+      "remove": "Remove",
+      "valid": "Valid file",
+      "submit": "Upload entry",
+      "failed": "Upload failed",
+      "success": "Entry uploaded successfully",
+      "viewEntry": "View entry",
+      "uploadAnother": "Upload another file"
+    },
+    "bulk": {
+      "summary": "{valid} valid, {invalid} invalid",
+      "valid": "Valid",
+      "submit": "Upload all",
+      "clear": "Clear all",
+      "newBatch": "New batch",
+      "waiting": "Waiting",
+      "processing": "Processing",
+      "done": "Done",
+      "failed": "Failed",
+      "progress": "{processed} / {total}",
+      "finished": "Uploaded {succeeded} of {total}, {failed} failed"
+    },
+    "errors": {
+      "INVALID_LENGTH": "Filename must be exactly 10 digits before .pdf",
+      "NON_DIGIT": "Filename contains non-digit characters",
+      "BAD_PREFIX": "Prefix not allowed. Allowed: 62, 63, 67",
+      "NO_PDF": "File must be a PDF",
+      "BAD_EXT": "Wrong extension. Must be .pdf"
+    },
+    "conflicts": {
+      "title": "Entry already exists",
+      "serial": "Serial",
+      "company": "Company",
+      "project": "Project",
+      "year": "Year",
+      "uploadedBy": "Uploaded by",
+      "loadFailed": "Could not load entry data",
+      "close": "Close",
+      "viewExisting": "View existing entry",
+      "duplicateSerial": "Serial already used",
+      "duplicateFile": "This file is already uploaded"
+    }
   }
 }
