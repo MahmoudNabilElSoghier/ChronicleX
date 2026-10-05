@@ -14,11 +14,14 @@ export function Sidebar(): JSX.Element {
   const { user } = useAuth();
   const pendingJobs = useActiveJobs()?.jobs.length ?? 0;
   const roleNames = new Set((user?.roles ?? []).map((r) => r.name));
+  // Upload requires CREATE ENTRY in practice; VIEWER-only users never have
+  // it, so hide the entry point (the backend still enforces with 403).
+  const canUpload = [...roleNames].some((r) => r !== 'VIEWER');
 
   const items = [
     { href: '/dashboard', label: t('dashboard'), icon: Home, show: true, badge: 0 },
     { href: '/entries', label: t('entries'), icon: FileText, show: true, badge: 0 },
-    { href: '/upload', label: t('upload'), icon: Upload, show: true, badge: pendingJobs },
+    { href: '/upload', label: t('upload'), icon: Upload, show: canUpload, badge: pendingJobs },
     {
       href: '/admin/users',
       label: t('users'),
