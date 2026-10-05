@@ -1,6 +1,7 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { createHash } from 'node:crypto';
 import type { Job } from 'bullmq';
+import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { StorageService } from '../storage/storage.service';
@@ -167,7 +168,31 @@ export class BulkUploadProcessor extends WorkerHost {
           select: { id: true },
         });
         entryId = entry.id;
-      } catch {
+      } catch (err) {
+        // Check-then-insert race (concurrent jobs, same serial): the loser
+        // hits the DB unique constraint. Map it to the same DUPLICATE_SERIAL
+        // result so clients see one deterministic error code either way.
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          const existing = await this.prisma.entry
+            .findUnique({
+              where: {
+                companyId_year_serial: { companyId: d.companyId, year: d.year, serial },
+              },
+              select: { id: true },
+            })
+            .catch(() => null);
+          await this.record(
+            d,
+            false,
+            failResult(
+              d,
+              'DUPLICATE_SERIAL',
+              'Serial already exists for this company and year',
+              existing?.id,
+            ),
+          );
+          return;
+        }
         await this.record(d, false, failResult(d, 'DB_ERROR', 'Could not create entry'));
         return;
       }

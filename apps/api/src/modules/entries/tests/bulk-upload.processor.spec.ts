@@ -1,4 +1,5 @@
 import type { Job } from 'bullmq';
+import { Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RedisService } from '../../../redis/redis.service';
 import { StorageService } from '../../storage/storage.service';
@@ -131,6 +132,25 @@ describe('BulkUploadProcessor', () => {
     await worker.process(jobOf({}));
     expect(redis.hset).not.toHaveBeenCalled();
     expect(storage.removeObject).toHaveBeenCalled();
+  });
+
+  it('unique-constraint race maps P2002 to DUPLICATE_SERIAL', async () => {
+    // Both jobs pass the app-level check; the loser hits the DB constraint.
+    prisma.entry.findUnique.mockResolvedValue(null);
+    prisma.entry.create.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: '6.19.3',
+      }),
+    );
+    prisma.entry.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'winner' });
+    await worker.process(jobOf({}));
+    const payload = redis.rpush.mock.calls[0]?.[1] as string;
+    expect(JSON.parse(payload)).toMatchObject({
+      status: 'error',
+      errorCode: 'DUPLICATE_SERIAL',
+      existingEntryId: 'winner',
+    });
   });
 
   it('invalid magic bytes are rejected before hashing', async () => {
