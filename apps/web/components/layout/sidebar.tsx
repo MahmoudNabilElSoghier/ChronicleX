@@ -20,17 +20,17 @@ export function Sidebar(): JSX.Element {
     { href: '/entries', label: t('entries'), icon: FileText, show: true, badge: 0 },
     { href: '/upload', label: t('upload'), icon: Upload, show: true, badge: pendingJobs },
     {
-      href: '/users',
+      href: '/admin/users',
       label: t('users'),
       icon: Users,
       show: roleNames.has('SUPER_ADMIN') || roleNames.has('COMPANY_ADMIN'),
       badge: 0,
     },
     {
-      href: '/audit',
+      href: '/admin/audit',
       label: t('audit'),
       icon: ScrollText,
-      show: roleNames.has('SUPER_ADMIN'),
+      show: roleNames.has('SUPER_ADMIN') || roleNames.has('COMPANY_ADMIN'),
       badge: 0,
     },
   ];

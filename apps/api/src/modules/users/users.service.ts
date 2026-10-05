@@ -157,12 +157,20 @@ export class UsersService {
     return { items, nextCursor: hasMore && last ? last.id : null };
   }
 
+  async listRoles(): Promise<Array<Record<string, unknown>>> {
+    const roles = await this.prisma.role.findMany({
+      select: { id: true, name: true, description: true },
+      orderBy: { name: 'asc' },
+    });
+    return roles as unknown as Array<Record<string, unknown>>;
+  }
+
   async findOne(id: string): Promise<Record<string, unknown>> {
     const user = await this.prisma.user.findUnique({
       where: { id },
       select: {
         ...PUBLIC_SELECT,
-        roles: { select: { role: { select: { name: true } }, scopeType: true, scopeId: true } },
+        roles: { select: { role: { select: { id: true, name: true } }, scopeType: true, scopeId: true } },
       },
     });
     if (!user) {
@@ -170,7 +178,12 @@ export class UsersService {
     }
     return {
       ...user,
-      roles: user.roles.map((r) => ({ name: r.role.name, scopeType: r.scopeType, scopeId: r.scopeId })),
+      roles: user.roles.map((r) => ({
+        roleId: r.role.id,
+        name: r.role.name,
+        scopeType: r.scopeType,
+        scopeId: r.scopeId,
+      })),
     };
   }
 

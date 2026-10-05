@@ -31,6 +31,12 @@ import { UsersService } from './users.service';
 export class UsersController {
   constructor(private readonly users: UsersService) {}
 
+  @Get('roles')
+  @RequirePermission('VIEW', 'USER')
+  async listRoles(): Promise<unknown> {
+    return { items: await this.users.listRoles() };
+  }
+
   @Get()
   @RequirePermission('VIEW', 'USER')
   async list(

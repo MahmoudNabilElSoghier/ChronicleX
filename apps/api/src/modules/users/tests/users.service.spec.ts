@@ -21,7 +21,7 @@ describe('UsersService', () => {
   const prisma = {
     user: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), findMany: jest.fn() },
     userRole: { findMany: jest.fn(), findFirst: jest.fn(), upsert: jest.fn(), deleteMany: jest.fn() },
-    role: { findUnique: jest.fn() },
+    role: { findUnique: jest.fn(), findMany: jest.fn() },
     project: { findUnique: jest.fn() },
     auditLog: { create: jest.fn().mockResolvedValue({}) },
   };
@@ -240,5 +240,31 @@ describe('UsersService', () => {
         }),
       }),
     );
+  });
+
+  it('listRoles returns roles ordered by name', async () => {
+    prisma.role.findMany.mockResolvedValue([
+      { id: 'r1', name: 'ARCHIVIST', description: null },
+    ]);
+    await expect(svc.listRoles()).resolves.toEqual([
+      { id: 'r1', name: 'ARCHIVIST', description: null },
+    ]);
+    expect(prisma.role.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { name: 'asc' } }),
+    );
+  });
+
+  it('findOne returns roles with roleId', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'u2',
+      email: 'u@x.y',
+      roles: [{ role: { id: 'r1', name: 'ARCHIVIST' }, scopeType: 'COMPANY', scopeId: 'c1' }],
+    });
+    const res = (await svc.findOne('u2')) as {
+      roles: { roleId: string; name: string; scopeType: string; scopeId: string }[];
+    };
+    expect(res.roles).toEqual([
+      { roleId: 'r1', name: 'ARCHIVIST', scopeType: 'COMPANY', scopeId: 'c1' },
+    ]);
   });
 });

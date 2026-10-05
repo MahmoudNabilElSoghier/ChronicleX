@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { LogOut } from 'lucide-react';
+import { LogOut, UserRound } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -50,6 +50,10 @@ export function UserMenu(): JSX.Element | null {
           </p>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => router.push('/profile')}>
+          <UserRound />
+          {t('profile')}
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={() => void onLogout()}>
           <LogOut />
           {t('signOut')}

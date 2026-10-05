@@ -1,0 +1,80 @@
+import { api } from './client';
+import type { CurrentUser } from '@chroniclex/shared';
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  nameAr: string;
+  nameEn: string;
+  isActive: boolean;
+  createdAt: string;
+  roles: { roleId?: string; name: string; scopeType: string; scopeId: string }[];
+}
+
+export interface AdminRole {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
+export interface AuditRow {
+  id: string;
+  action: string;
+  resource: string;
+  userId: string | null;
+  resourceId: string | null;
+  oldValues: Record<string, unknown> | null;
+  newValues: Record<string, unknown> | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string;
+}
+
+function toQuery(params: Record<string, string | number | undefined>): string {
+  const qs = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') {
+      qs.set(key, String(value));
+    }
+  }
+  const s = qs.toString();
+  return s ? `?${s}` : '';
+}
+
+export const adminApi = {
+  users: {
+    list: (params: Record<string, string | number | undefined>): Promise<{
+      items: AdminUser[];
+      nextCursor: string | null;
+    }> => api.request(`/users${toQuery(params)}`),
+    get: (id: string): Promise<AdminUser> => api.request(`/users/${id}`),
+    create: (body: Record<string, unknown>): Promise<AdminUser> =>
+      api.request('/users', { method: 'POST', body: JSON.stringify(body) }),
+    update: (id: string, body: Record<string, unknown>): Promise<AdminUser> =>
+      api.request(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    grantRole: (
+      userId: string,
+      body: { roleId: string; scopeType: string; scopeId?: string },
+    ): Promise<unknown> =>
+      api.request(`/users/${userId}/roles`, { method: 'POST', body: JSON.stringify(body) }),
+    revokeRole: (userId: string, roleId: string, scopeType: string, scopeId: string): Promise<void> =>
+      api.request(
+        `/users/${userId}/roles/${roleId}?scopeType=${scopeType}&scopeId=${encodeURIComponent(scopeId)}`,
+        { method: 'DELETE' },
+      ),
+    changePassword: (body: { currentPassword: string; newPassword: string }): Promise<void> =>
+      api.request('/users/me/change-password', { method: 'POST', body: JSON.stringify(body) }),
+  },
+  roles: {
+    list: (): Promise<{ items: AdminRole[] }> => api.request('/users/roles'),
+  },
+  audit: {
+    list: (params: Record<string, string | number | undefined>): Promise<{
+      items: AuditRow[];
+      nextCursor: string | null;
+      hasMore: boolean;
+    }> => api.request(`/audit-logs${toQuery(params)}`),
+  },
+};
+
+export type { CurrentUser };
