@@ -6,7 +6,8 @@ import { AuditService } from '../audit.service';
 
 describe('AuditController', () => {
   const prisma = {
-    auditLog: { findMany: jest.fn() },
+    auditLog: { findMany: jest.fn().mockResolvedValue([]) },
+    project: { findMany: jest.fn().mockResolvedValue([]) },
   };
   const permissions = { getEffectiveGrants: jest.fn() };
   const service = new AuditService(
@@ -18,9 +19,18 @@ describe('AuditController', () => {
 
   beforeEach(() => jest.clearAllMocks());
 
-  it('COMPANY_ADMIN has VIEW AUDIT grant but /audit-logs returns 403 until scoped reads land', async () => {
+  it('COMPANY_ADMIN c1 lists rows (scope enforced inside the service)', async () => {
     permissions.getEffectiveGrants.mockResolvedValue([
       { action: 'VIEW', resource: 'AUDIT', scopeType: 'COMPANY', scopeId: 'c1' },
+    ]);
+    prisma.auditLog.findMany.mockResolvedValue([]);
+    const res = (await controller.list({ limit: 50 } as never, admin)) as Record<string, unknown>;
+    expect(res.items).toEqual([]);
+  });
+
+  it('PROJECT_ADMIN without VIEW AUDIT still gets 403', async () => {
+    permissions.getEffectiveGrants.mockResolvedValue([
+      { action: 'VIEW', resource: 'ENTRY', scopeType: 'PROJECT', scopeId: 'p1' },
     ]);
     await expect(controller.list({ limit: 50 } as never, admin)).rejects.toBeInstanceOf(
       ForbiddenException,

@@ -58,12 +58,13 @@ describe('AuditViewerPage', () => {
     vi.clearAllMocks();
   });
 
-  it('403 shows the coming-soon card', async () => {
+  it('403 shows the generic error card with retry', async () => {
     listMock.mockRejectedValue(new ApiError(403, 'FORBIDDEN', 'nope'));
     renderAudit();
     await waitFor(() =>
-      expect(screen.getByText(/العرض الكامل قريباً/)).toBeInTheDocument(),
+      expect(screen.getByText(/تعذر تحميل السجل/)).toBeInTheDocument(),
     );
+    expect(screen.getByRole('button', { name: /إعادة المحاولة/ })).toBeInTheDocument();
   });
 
   it('200 renders table rows', async () => {

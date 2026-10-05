@@ -10,7 +10,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { adminApi, type AuditRow } from '@/lib/api/admin';
-import { ApiError } from '@/lib/api/client';
 import { formatDateTime, formatRelativeTime } from '@/lib/format';
 
 const ACTION_COLORS: Record<string, string> = {
@@ -52,9 +51,6 @@ export default function AuditViewerPage(): JSX.Element {
     retry: false,
   });
 
-  const forbidden =
-    query.error instanceof ApiError && (query.error as ApiError).status === 403;
-
   function toggle(id: string): void {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -70,11 +66,13 @@ export default function AuditViewerPage(): JSX.Element {
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">{t('audit.title')}</h1>
 
-      {forbidden ? (
+      {query.isError ? (
         <Card>
-          <CardContent className="p-6 text-center">
-            <p className="font-medium">{t('audit.comingSoonTitle')}</p>
-            <p className="mt-1 text-sm text-muted-foreground">{t('audit.comingSoon')}</p>
+          <CardContent className="flex items-center justify-between gap-4 p-6">
+            <p className="text-sm text-destructive">{t('audit.error')}</p>
+            <Button variant="outline" onClick={() => void query.refetch()}>
+              {t('audit.retry')}
+            </Button>
           </CardContent>
         </Card>
       ) : (
@@ -171,15 +169,6 @@ export default function AuditViewerPage(): JSX.Element {
                 <Skeleton key={i} className="h-14" />
               ))}
             </div>
-          ) : query.isError ? (
-            <Card>
-              <CardContent className="flex items-center justify-between gap-4 p-6">
-                <p className="text-sm text-destructive">{t('audit.error')}</p>
-                <Button variant="outline" onClick={() => void query.refetch()}>
-                  {t('audit.retry')}
-                </Button>
-              </CardContent>
-            </Card>
           ) : items.length === 0 ? (
             <Card>
               <CardContent className="p-10 text-center text-muted-foreground">

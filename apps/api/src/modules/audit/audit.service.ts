@@ -70,22 +70,63 @@ export class AuditService {
   }
 
   /**
-   * Paginated audit reads. Currently GROUP-VIEW-AUDIT holders only
-   * (SUPER_ADMIN in practice).
-   *
-   * TODO(scoped-audit-reads): COMPANY_ADMIN holds VIEW AUDIT at company
-   * scope. Serve them rows limited to users within their company by joining
-   * AuditLog.user → UserRole → scope. Until then, non-GROUP callers get 403.
+   * Scope filter for audit reads. GROUP VIEW AUDIT sees everything;
+   * COMPANY-scoped callers see rows whose actor holds any role in a visible
+   * scope (COMPANY or PROJECT), plus rows targeting visible COMPANY/PROJECT
+   * resources. ENTRY-level resourceId matching is deferred (see TODO below).
    */
-  async list(query: ListAuditLogsDto, userId: string): Promise<Record<string, unknown>> {
+  async buildScopeWhere(userId: string): Promise<Prisma.AuditLogWhereInput> {
     const grants = await this.permissions.getEffectiveGrants(userId);
-    const allowed = grants.some(
-      (g) => g.action === 'VIEW' && g.resource === 'AUDIT' && g.scopeType === 'GROUP',
-    );
-    if (!allowed) {
+    const view = grants.filter((g) => g.action === 'VIEW' && g.resource === 'AUDIT');
+
+    if (view.some((g) => g.scopeType === 'GROUP')) return {};
+
+    const companyIds = [
+      ...new Set(view.filter((g) => g.scopeType === 'COMPANY').map((g) => g.scopeId)),
+    ];
+    if (companyIds.length === 0) {
       throw new ForbiddenException('Insufficient permissions');
     }
-    const where: Prisma.AuditLogWhereInput = {};
+
+    const projects = await this.prisma.project.findMany({
+      where: { companyId: { in: companyIds } },
+      select: { id: true },
+    });
+    const projectIds = projects.map((p) => p.id);
+
+    // Note: audit rows with userId=null (failed logins, system events) are
+    // intentionally NOT matched by this actor clause — their relation to any
+    // company can't be resolved. Only GROUP-scoped callers see them.
+    const actorClause: Prisma.AuditLogWhereInput = {
+      user: {
+        roles: {
+          some: {
+            OR: [
+              { scopeType: 'COMPANY', scopeId: { in: companyIds } },
+              { scopeType: 'PROJECT', scopeId: { in: projectIds } },
+            ],
+          },
+        },
+      },
+    };
+
+    // Resources: logs targeting entities in visible scope.
+    // TODO(Phase 8): include resourceId matching for ENTRY — requires a
+    // denormalized scope column on AuditLog or a materialized view to avoid
+    // an expensive subquery at scale.
+    const resourceClause: Prisma.AuditLogWhereInput = {
+      OR: [
+        { resource: 'COMPANY', resourceId: { in: companyIds } },
+        { resource: 'PROJECT', resourceId: { in: projectIds } },
+      ],
+    };
+
+    return { OR: [actorClause, resourceClause] };
+  }
+
+  async list(query: ListAuditLogsDto, userId: string): Promise<Record<string, unknown>> {
+    const scopeWhere = await this.buildScopeWhere(userId);
+    const where: Prisma.AuditLogWhereInput = { AND: [scopeWhere] };
     if (query.userId) where.userId = query.userId;
     if (query.resource) where.resource = query.resource;
     if (query.action) where.action = query.action;

@@ -37,9 +37,6 @@ export class PermissionsService {
     return grants;
   }
 
-  // Phase 4 TODO closed: users.service calls invalidateUser() on every
-  // grant/revoke/deactivate path. RoleService (Phase 8) must call
-  // invalidateRole() whenever RolePermission rows change.
   /** Drop one user's cached grants. Call on any mutation of their access. */
   async invalidateUser(userId: string): Promise<void> {
     await this.redis.del(this.cacheKey(userId));

@@ -3,7 +3,7 @@ import { PermissionsService } from '../../rbac/permissions.service';
 import { AuditService, redact } from '../audit.service';
 
 describe('AuditService', () => {
-  const prisma = { auditLog: { create: jest.fn() } };
+  const prisma = { auditLog: { create: jest.fn() }, project: { findMany: jest.fn() } };
   const permissions = { getEffectiveGrants: jest.fn() };
   const svc = new AuditService(
     prisma as unknown as PrismaService,
@@ -104,5 +104,67 @@ describe('AuditService', () => {
         userAgent: undefined as unknown as null,
       }),
     ).resolves.toBeUndefined();
+  });
+
+  describe('buildScopeWhere', () => {
+    const companyGrant = { action: 'VIEW', resource: 'AUDIT', scopeType: 'COMPANY', scopeId: 'c1' };
+
+    it('PROJECT-scoped actor is visible to their COMPANY_ADMIN', async () => {
+      permissions.getEffectiveGrants.mockResolvedValue([companyGrant]);
+      prisma.project.findMany.mockResolvedValue([{ id: 'p1' }]);
+      const where = (await svc.buildScopeWhere('admin-c1')) as {
+        OR: Array<{ user?: { roles: { some: { OR: unknown[] } } } }>;
+      };
+      const actorOr = where.OR[0]?.user?.roles.some.OR as Array<Record<string, unknown>>;
+      expect(actorOr).toContainEqual({ scopeType: 'COMPANY', scopeId: { in: ['c1'] } });
+      expect(actorOr).toContainEqual({ scopeType: 'PROJECT', scopeId: { in: ['p1'] } });
+    });
+
+    it('ENTRY resource rows are not matched yet (deferred to Phase 8)', async () => {
+      permissions.getEffectiveGrants.mockResolvedValue([companyGrant]);
+      prisma.project.findMany.mockResolvedValue([{ id: 'p1' }]);
+      const where = (await svc.buildScopeWhere('admin-c1')) as {
+        OR: Array<{ OR?: Array<Record<string, unknown>> }>;
+      };
+      const resourceOr = where.OR[1]?.OR as Array<Record<string, unknown>>;
+      // Only COMPANY/PROJECT resources are covered; ENTRY resourceId matching
+      // needs the denormalized scope column (Phase 8 TODO in the service).
+      expect(resourceOr.some((clause) => 'ENTRY' in clause || clause.resource === 'ENTRY')).toBe(false);
+      expect(resourceOr).toContainEqual({ resource: 'COMPANY', resourceId: { in: ['c1'] } });
+      expect(resourceOr).toContainEqual({ resource: 'PROJECT', resourceId: { in: ['p1'] } });
+    });
+
+    it('COMPANY_ADMIN c2 scope is disjoint from c1', async () => {
+      permissions.getEffectiveGrants.mockResolvedValue([
+        { action: 'VIEW', resource: 'AUDIT', scopeType: 'COMPANY', scopeId: 'c2' },
+      ]);
+      prisma.project.findMany.mockResolvedValue([{ id: 'p9' }]);
+      const where = (await svc.buildScopeWhere('admin-c2')) as {
+        OR: Array<{ user?: { roles: { some: { OR: unknown[] } } } }>;
+      };
+      const actorOr = where.OR[0]?.user?.roles.some.OR as Array<Record<string, unknown>>;
+      expect(actorOr).toContainEqual({ scopeType: 'COMPANY', scopeId: { in: ['c2'] } });
+      expect(JSON.stringify(where)).not.toContain('"c1"');
+    });
+
+    it('null-userId rows match nothing in the actor clause', async () => {
+      // Failed logins / system events have no user relation, so the
+      // user.roles.some branch can never match them. Only GROUP callers
+      // (empty scope {}) see them.
+      permissions.getEffectiveGrants.mockResolvedValue([companyGrant]);
+      prisma.project.findMany.mockResolvedValue([]);
+      const where = await svc.buildScopeWhere('admin-c1');
+      expect(where).toHaveProperty('OR');
+      const asRecord = where as { OR: unknown[] };
+      expect(asRecord.OR).toHaveLength(2);
+    });
+
+    it('GROUP VIEW AUDIT sees everything (empty scope)', async () => {
+      permissions.getEffectiveGrants.mockResolvedValue([
+        { action: 'VIEW', resource: 'AUDIT', scopeType: 'GROUP', scopeId: '' },
+      ]);
+      await expect(svc.buildScopeWhere('root')).resolves.toEqual({});
+      expect(prisma.project.findMany).not.toHaveBeenCalled();
+    });
   });
 });
