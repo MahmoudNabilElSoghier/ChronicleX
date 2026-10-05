@@ -12,6 +12,7 @@ import { EntriesModule } from './modules/entries/entries.module';
 import { RBACModule } from './modules/rbac/rbac.module';
 import { QueueModule } from './modules/queue/queue.module';
 import { StorageModule } from './modules/storage/storage.module';
+import { UsersModule } from './modules/users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 
@@ -33,6 +34,7 @@ import { RedisModule } from './redis/redis.module';
     StorageModule,
     AuditModule,
     EntriesModule,
+    UsersModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },

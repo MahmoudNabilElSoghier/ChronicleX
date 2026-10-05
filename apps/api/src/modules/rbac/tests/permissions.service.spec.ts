@@ -47,8 +47,8 @@ describe('PermissionsService', () => {
     expect(redis.set).not.toHaveBeenCalled();
   });
 
-  it('invalidate deletes the cache key', async () => {
-    await svc.invalidate('u1');
+  it('invalidateUser deletes the cache key', async () => {
+    await svc.invalidateUser('u1');
     expect(redis.del).toHaveBeenCalledWith('user:grants:u1');
   });
 });

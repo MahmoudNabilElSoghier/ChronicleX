@@ -11,6 +11,7 @@ describe('ScopeResolver', () => {
     entry: { findUnique: jest.fn() },
     project: { findUnique: jest.fn() },
     company: { findUnique: jest.fn() },
+    userRole: { findMany: jest.fn() },
   };
   const resolver = new ScopeResolver(prisma as unknown as PrismaService);
 
@@ -76,5 +77,27 @@ describe('ScopeResolver', () => {
       { scopeType: 'GROUP', scopeId: '' },
     ]);
     expect(prisma.entry.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('USER hint returns the union of the target scopes plus GROUP', async () => {
+    prisma.userRole.findMany.mockResolvedValue([
+      { scopeType: 'COMPANY', scopeId: 'c1' },
+      { scopeType: 'PROJECT', scopeId: 'p1' },
+      { scopeType: 'COMPANY', scopeId: 'c1' },
+    ]);
+    await expect(
+      resolver.resolve('USER', { source: 'params', key: 'id' }, reqWith('params', 'id', 'u9')),
+    ).resolves.toEqual([
+      { scopeType: 'COMPANY', scopeId: 'c1' },
+      { scopeType: 'PROJECT', scopeId: 'p1' },
+      { scopeType: 'GROUP', scopeId: '' },
+    ]);
+  });
+
+  it('USER hint on a role-less user resolves [GROUP] only', async () => {
+    prisma.userRole.findMany.mockResolvedValue([]);
+    await expect(
+      resolver.resolve('USER', { source: 'params', key: 'id' }, reqWith('params', 'id', 'u0')),
+    ).resolves.toEqual([{ scopeType: 'GROUP', scopeId: '' }]);
   });
 });

@@ -60,7 +60,25 @@ export class ScopeResolver {
         if (!company) throw new NotFoundException('Company not found');
         return [{ scopeType: 'COMPANY', scopeId: id }, ...GROUP_ROOT];
       }
-      case 'USER':
+      case 'USER': {
+        const id = this.resourceId(hint, req);
+        if (!id) throw new NotFoundException('User id is required');
+        // Union of the target's scopes: a caller matching ANY of them passes.
+        const rows = await this.prisma.userRole.findMany({
+          where: { userId: id },
+          select: { scopeType: true, scopeId: true },
+        });
+        const seen = new Set<string>();
+        const chain: ScopeChain = [];
+        for (const r of rows) {
+          const key = `${r.scopeType}:${r.scopeId}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            chain.push({ scopeType: r.scopeType, scopeId: r.scopeId });
+          }
+        }
+        return [...chain, ...GROUP_ROOT];
+      }
       case 'AUDIT':
       case 'AUTH':
         return [...GROUP_ROOT];

@@ -37,10 +37,28 @@ export class PermissionsService {
     return grants;
   }
 
-  // TODO(Phase 7): call invalidate(userId) from UserRole mutations.
-  // When RolePermission rows change, ALL users holding that role must
-  // be invalidated — use Redis SCAN on `user:grants:*` and batch-DEL.
-  async invalidate(userId: string): Promise<void> {
+  // Phase 4 TODO closed: users.service calls invalidateUser() on every
+  // grant/revoke/deactivate path. RoleService (Phase 8) must call
+  // invalidateRole() whenever RolePermission rows change.
+  /** Drop one user's cached grants. Call on any mutation of their access. */
+  async invalidateUser(userId: string): Promise<void> {
     await this.redis.del(this.cacheKey(userId));
+  }
+
+  /** Drop every cached grant set. Nuclear option for permission-model changes. */
+  async invalidateAll(): Promise<void> {
+    await this.redis.deleteByPattern('user:grants:*');
+  }
+
+  /** Drop cached grants of all users holding a role (after its perms change). */
+  async invalidateRole(roleId: string): Promise<void> {
+    const rows = await this.prisma.userRole.findMany({
+      where: { roleId },
+      select: { userId: true },
+    });
+    const ids = [...new Set(rows.map((r) => r.userId))];
+    for (const id of ids) {
+      await this.redis.del(this.cacheKey(id));
+    }
   }
 }
