@@ -1,0 +1,60 @@
+'use client';
+
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+import { FileText, Home, ScrollText, Upload, Users } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { useAuth } from '@/lib/auth/auth-context';
+
+export function Sidebar(): JSX.Element {
+  const t = useTranslations('nav');
+  const pathname = usePathname();
+  const { user } = useAuth();
+  const roleNames = new Set((user?.roles ?? []).map((r) => r.name));
+
+  const items = [
+    { href: '/dashboard', label: t('dashboard'), icon: Home, show: true },
+    { href: '/entries', label: t('entries'), icon: FileText, show: true },
+    { href: '/upload', label: t('upload'), icon: Upload, show: true },
+    {
+      href: '/users',
+      label: t('users'),
+      icon: Users,
+      show: roleNames.has('SUPER_ADMIN') || roleNames.has('COMPANY_ADMIN'),
+    },
+    {
+      href: '/audit',
+      label: t('audit'),
+      icon: ScrollText,
+      show: roleNames.has('SUPER_ADMIN'),
+    },
+  ];
+
+  return (
+    <aside className="flex w-16 flex-col gap-1 border-e bg-card p-2 md:w-56">
+      <Link href="/dashboard" className="mb-4 flex items-center gap-2 px-2 pt-2">
+        <span className="text-lg font-bold">ChronicleX</span>
+      </Link>
+      {items
+        .filter((i) => i.show)
+        .map((item) => {
+          const active = pathname.endsWith(item.href);
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                active && 'bg-accent text-accent-foreground',
+              )}
+            >
+              <Icon />
+              <span className="hidden md:inline">{item.label}</span>
+            </Link>
+          );
+        })}
+    </aside>
+  );
+}

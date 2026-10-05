@@ -8,6 +8,7 @@ import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AuthGuard } from './modules/auth/guards/auth.guard';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { EntriesModule } from './modules/entries/entries.module';
 import { RBACModule } from './modules/rbac/rbac.module';
 import { QueueModule } from './modules/queue/queue.module';
@@ -35,6 +36,7 @@ import { RedisModule } from './redis/redis.module';
     AuditModule,
     EntriesModule,
     UsersModule,
+    DashboardModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },

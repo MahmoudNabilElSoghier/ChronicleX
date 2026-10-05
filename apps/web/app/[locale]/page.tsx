@@ -1,11 +1,22 @@
-import { useTranslations } from 'next-intl';
+'use client';
 
-export default function LocalePage() {
-  const t = useTranslations('home');
+import { useRouter } from 'next/navigation';
+import * as React from 'react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useAuth } from '@/lib/auth/auth-context';
+
+export default function IndexPage(): JSX.Element {
+  const router = useRouter();
+  const { status } = useAuth();
+
+  React.useEffect(() => {
+    if (status === 'authenticated') router.replace('/dashboard');
+    else if (status === 'unauthenticated') router.replace('/login');
+  }, [status, router]);
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-2">
-      <h1 className="text-2xl font-bold">{t('title')}</h1>
-      <p className="text-sm opacity-70">{t('tagline')}</p>
+    <main className="flex min-h-screen items-center justify-center">
+      <Skeleton className="h-8 w-48" />
     </main>
   );
 }

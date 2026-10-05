@@ -2,5 +2,46 @@
   "home": {
     "title": "ChronicleX — TMG Archive",
     "tagline": "Archiving platform built for TMG"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "entries": "Entries",
+    "upload": "Upload",
+    "users": "Users",
+    "audit": "Audit Log"
+  },
+  "auth": {
+    "tagline": "Accounting entries archiving platform",
+    "email": "Email",
+    "password": "Password",
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "invalidCredentials": "Invalid credentials, please try again",
+    "tooManyAttempts": "Too many attempts, try again in 15 minutes",
+    "invalidEmail": "Please enter a valid email address",
+    "passwordTooShort": "Password must be at least 8 characters"
+  },
+  "dashboard": {
+    "greeting": "Welcome, {name}",
+    "totalCompanies": "Total companies",
+    "totalProjects": "Total projects",
+    "totalEntries": "Total entries",
+    "recentUploadsCount": "Recent uploads",
+    "entriesByYear": "Entries by year",
+    "byType": "Entries by type",
+    "recentUploads": "Recently uploaded entries",
+    "recentUploadsHint": "Last 10 archived entries",
+    "noData": "No data yet",
+    "loadError": "Could not load data",
+    "retry": "Retry"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Something went wrong",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "confirm": "Confirm"
   }
 }
