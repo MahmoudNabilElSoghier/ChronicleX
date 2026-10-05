@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useQuery } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
@@ -132,8 +132,9 @@ export default function EntriesListPage(): JSX.Element {
       <Card>
         <CardContent className="grid gap-3 p-4 md:grid-cols-4">
           <div className="space-y-1">
-            <Label>{t('filters.company')}</Label>
+            <Label htmlFor="f-company">{t('filters.company')}</Label>
             <select
+              id="f-company"
               className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
               value={filters.companyId}
               onChange={(e) => patchFilters({ companyId: e.target.value, projectId: '' })}
@@ -147,8 +148,9 @@ export default function EntriesListPage(): JSX.Element {
             </select>
           </div>
           <div className="space-y-1">
-            <Label>{t('filters.project')}</Label>
+            <Label htmlFor="f-project">{t('filters.project')}</Label>
             <select
+              id="f-project"
               className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
               value={filters.projectId}
               disabled={!filters.companyId}
@@ -163,8 +165,9 @@ export default function EntriesListPage(): JSX.Element {
             </select>
           </div>
           <div className="space-y-1">
-            <Label>{t('filters.year')}</Label>
+            <Label htmlFor="f-year">{t('filters.year')}</Label>
             <select
+              id="f-year"
               className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
               value={filters.year === null ? '' : String(filters.year)}
               onChange={(e) => patchFilters({ year: e.target.value === '' ? null : Number(e.target.value) })}
@@ -178,8 +181,9 @@ export default function EntriesListPage(): JSX.Element {
             </select>
           </div>
           <div className="space-y-1">
-            <Label>{t('filters.typePrefix')}</Label>
+            <Label htmlFor="f-type">{t('filters.typePrefix')}</Label>
             <select
+              id="f-type"
               className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
               value={filters.typePrefix}
               onChange={(e) => patchFilters({ typePrefix: e.target.value })}
@@ -193,8 +197,9 @@ export default function EntriesListPage(): JSX.Element {
             </select>
           </div>
           <div className="space-y-1">
-            <Label>{t('filters.serial')}</Label>
+            <Label htmlFor="f-serial">{t('filters.serial')}</Label>
             <Input
+              id="f-serial"
               dir="ltr"
               value={filters.serial}
               onChange={(e) => patchFilters({ serial: e.target.value })}
@@ -202,8 +207,8 @@ export default function EntriesListPage(): JSX.Element {
             />
           </div>
           <div className="space-y-1">
-            <Label>{t('filters.search')}</Label>
-            <Input value={filters.q} onChange={(e) => patchFilters({ q: e.target.value })} />
+            <Label htmlFor="f-q">{t('filters.search')}</Label>
+            <Input id="f-q" value={filters.q} onChange={(e) => patchFilters({ q: e.target.value })} />
           </div>
           <div className="flex items-end gap-2">
             {showDeletedToggle ? (

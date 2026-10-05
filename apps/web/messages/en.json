@@ -19,6 +19,7 @@
     "signIn": "Sign in",
     "signOut": "Sign out",
     "profile": "My account",
+    "account": "Account",
     "invalidCredentials": "Invalid credentials, please try again",
     "tooManyAttempts": "Too many attempts, try again in 15 minutes",
     "invalidEmail": "Please enter a valid email address",

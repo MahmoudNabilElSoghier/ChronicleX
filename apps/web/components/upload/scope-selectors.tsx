@@ -31,8 +31,9 @@ export function ScopeSelectors({
   return (
     <div className="grid gap-3 md:grid-cols-3">
       <div className="space-y-1">
-        <Label>{t('company')}</Label>
+        <Label htmlFor="scope-company">{t('company')}</Label>
         <select
+          id="scope-company"
           className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
           value={value.companyId}
           disabled={disabled}
@@ -47,8 +48,9 @@ export function ScopeSelectors({
         </select>
       </div>
       <div className="space-y-1">
-        <Label>{t('project')}</Label>
+        <Label htmlFor="scope-project">{t('project')}</Label>
         <select
+          id="scope-project"
           className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
           value={value.projectId}
           disabled={disabled || value.companyId === ''}

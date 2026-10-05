@@ -9,6 +9,7 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test --if-present",
+    "e2e": "pnpm --filter @chroniclex/web e2e",
     "keys:generate": "pnpm --filter @chroniclex/api keys:generate"
   },
   "devDependencies": {

@@ -1,0 +1,40 @@
+name: e2e
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @chroniclex/web exec playwright install --with-deps chromium
+      - run: docker compose up -d postgres redis minio
+      - run: pnpm -r build
+        env:
+          DATABASE_URL: postgresql://tmg:change_me_postgres@localhost:5432/chroniclex?schema=public
+      - run: pnpm --filter @chroniclex/api exec prisma migrate reset --force
+        env:
+          DATABASE_URL: postgresql://tmg:change_me_postgres@localhost:5432/chroniclex_e2e?schema=public
+      - run: pnpm --filter @chroniclex/api exec prisma db seed
+        env:
+          DATABASE_URL: postgresql://tmg:change_me_postgres@localhost:5432/chroniclex_e2e?schema=public
+          SEED_E2E_USERS: 'true'
+      - run: pnpm --filter @chroniclex/web e2e
+        env:
+          E2E_DATABASE_URL: postgresql://tmg:change_me_postgres@localhost:5432/chroniclex_e2e?schema=public
+          E2E_MINIO_BUCKET: chroniclex-e2e
+          NEXT_PUBLIC_API_URL: http://localhost:3001
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/

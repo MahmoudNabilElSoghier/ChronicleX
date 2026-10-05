@@ -36,7 +36,7 @@ export function UserMenu(): JSX.Element | null {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+        <Button variant="ghost" className="relative h-9 w-9 rounded-full" aria-label={t('account')}>
           <Avatar className="h-9 w-9">
             <AvatarFallback>{initials(user.nameEn || user.email)}</AvatarFallback>
           </Avatar>

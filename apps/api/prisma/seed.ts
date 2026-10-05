@@ -149,6 +149,62 @@ async function main(): Promise<void> {
   });
 
   console.log('seed ok: 3 companies, 5 projects, 5 roles, 36 permissions, 1 admin');
+
+  // E2E-only users. NEVER in production: gated behind SEED_E2E_USERS=true,
+  // which globalSetup sets for the dedicated chroniclex_e2e database.
+  if (process.env.SEED_E2E_USERS === 'true') {
+    await seedE2eUsers();
+  }
+}
+
+async function seedE2eUsers(): Promise<void> {
+  const c1 = await prisma.company.findUniqueOrThrow({ where: { code: 2000 } });
+  const rehab = await prisma.project.findFirstOrThrow({
+    where: { companyId: c1.id, code: 'REHAB' },
+  });
+  const roleId = async (name: string): Promise<string> =>
+    (await prisma.role.findUniqueOrThrow({ where: { name } })).id;
+
+  const users: Array<{
+    email: string;
+    password: string;
+    role: string;
+    scopeType: 'GROUP' | 'COMPANY' | 'PROJECT';
+    scopeId: string;
+  }> = [
+    { email: 'super@tmg.local', password: 'SuperTest!2025', role: 'SUPER_ADMIN', scopeType: 'GROUP', scopeId: '' },
+    { email: 'c1admin@tmg.local', password: 'C1Admin!2025', role: 'COMPANY_ADMIN', scopeType: 'COMPANY', scopeId: c1.id },
+    { email: 'p1admin@tmg.local', password: 'P1Admin!2025', role: 'PROJECT_ADMIN', scopeType: 'PROJECT', scopeId: rehab.id },
+    { email: 'archivist@tmg.local', password: 'Archiv!2025', role: 'ARCHIVIST', scopeType: 'PROJECT', scopeId: rehab.id },
+    { email: 'viewer@tmg.local', password: 'Viewer!2025', role: 'VIEWER', scopeType: 'PROJECT', scopeId: rehab.id },
+  ];
+  for (const u of users) {
+    const user = await prisma.user.upsert({
+      where: { email: u.email },
+      update: {},
+      create: {
+        email: u.email,
+        passwordHash: await argon2.hash(u.password),
+        nameAr: 'مستخدم اختبار',
+        nameEn: 'E2E Test User',
+        isActive: true,
+      },
+    });
+    const rid = await roleId(u.role);
+    await prisma.userRole.upsert({
+      where: {
+        userId_roleId_scopeType_scopeId: {
+          userId: user.id,
+          roleId: rid,
+          scopeType: u.scopeType,
+          scopeId: u.scopeId,
+        },
+      },
+      update: {},
+      create: { userId: user.id, roleId: rid, scopeType: u.scopeType, scopeId: u.scopeId },
+    });
+  }
+  console.log('seed ok: 5 E2E users');
 }
 
 main()

@@ -13,8 +13,16 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@/lib/auth/auth-context', () => ({
-  useAuth: () => ({ user: null, status: 'unauthenticated', login: vi.fn(), logout: vi.fn() }),
-  useRequireAuth: () => null,
+  useAuth: () => ({
+    user: {
+      id: 'u1', email: 'a@b.c', nameAr: 'م', nameEn: 'A', isActive: true,
+      roles: [{ name: 'ARCHIVIST', scopeType: 'PROJECT', scopeId: 'p1' }],
+    },
+    status: 'authenticated',
+    login: vi.fn(),
+    logout: vi.fn(),
+  }),
+  useRequireAuth: () => ({ id: 'u1' }),
 }));
 
 function Tracker({ jobId }: { jobId: string }): null {

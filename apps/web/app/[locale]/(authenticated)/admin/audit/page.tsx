@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useQuery } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
@@ -80,16 +80,18 @@ export default function AuditViewerPage(): JSX.Element {
           <Card>
             <CardContent className="grid gap-3 p-4 md:grid-cols-4">
               <div className="space-y-1">
-                <Label>{t('audit.userId')}</Label>
+                <Label htmlFor="a-userId">{t('audit.userId')}</Label>
                 <Input
+                  id="a-userId"
                   dir="ltr"
                   value={filters.userId}
                   onChange={(e) => void setFilters({ userId: e.target.value })}
                 />
               </div>
               <div className="space-y-1">
-                <Label>{t('audit.resource')}</Label>
+                <Label htmlFor="a-resource">{t('audit.resource')}</Label>
                 <select
+                  id="a-resource"
                   className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
                   value={filters.resource}
                   onChange={(e) => void setFilters({ resource: e.target.value })}
@@ -103,8 +105,9 @@ export default function AuditViewerPage(): JSX.Element {
                 </select>
               </div>
               <div className="space-y-1">
-                <Label>{t('audit.action')}</Label>
+                <Label htmlFor="a-action">{t('audit.action')}</Label>
                 <select
+                  id="a-action"
                   className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
                   value={filters.action}
                   onChange={(e) => void setFilters({ action: e.target.value })}
@@ -118,16 +121,18 @@ export default function AuditViewerPage(): JSX.Element {
                 </select>
               </div>
               <div className="space-y-1">
-                <Label>{t('audit.resourceId')}</Label>
+                <Label htmlFor="a-resourceId">{t('audit.resourceId')}</Label>
                 <Input
+                  id="a-resourceId"
                   dir="ltr"
                   value={filters.resourceId}
                   onChange={(e) => void setFilters({ resourceId: e.target.value })}
                 />
               </div>
               <div className="space-y-1">
-                <Label>{t('audit.from')}</Label>
+                <Label htmlFor="a-from">{t('audit.from')}</Label>
                 <Input
+                  id="a-from"
                   type="date"
                   dir="ltr"
                   value={filters.from}
@@ -135,8 +140,9 @@ export default function AuditViewerPage(): JSX.Element {
                 />
               </div>
               <div className="space-y-1">
-                <Label>{t('audit.to')}</Label>
+                <Label htmlFor="a-to">{t('audit.to')}</Label>
                 <Input
+                  id="a-to"
                   type="date"
                   dir="ltr"
                   value={filters.to}
