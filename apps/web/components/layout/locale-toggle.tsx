@@ -1,7 +1,8 @@
-'use client';
+﻿'use client';
 
 import { useLocale } from 'next-intl';
-import { usePathname, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
+import { usePathname, useRouter } from '@/lib/navigation';
 import { Languages } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -13,12 +14,15 @@ import {
 
 export function LocaleToggle(): JSX.Element {
   const locale = useLocale();
+  // next-intl pathname has no locale prefix (e.g. '/entries').
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  function switchTo(next: string): void {
-    const rest = pathname.replace(/^\/(ar|en)(?=\/|$)/, '') || '/';
-    router.replace(`/${next}${rest}`);
+  function switchTo(next: 'ar' | 'en'): void {
+    const query = searchParams.toString();
+    const nextPath = query ? `${pathname}?${query}` : pathname;
+    router.replace(nextPath, { locale: next });
   }
 
   return (

@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { NuqsTestingAdapter } from 'nuqs/adapters/testing';
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ar from '@/messages/ar.json';
 import UploadPage from '@/app/[locale]/(authenticated)/upload/page';
@@ -10,6 +11,16 @@ import { uploadApi } from '@/lib/api/entries';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+}));
+
+vi.mock('@/lib/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  usePathname: () => '/upload',
+  useParams: () => ({ id: 'e1' }),
+  Link: ({ children, href }: { children: ReactNode; href: string }) => (
+    <a href={href}>{children}</a>
+  ),
+  redirect: vi.fn(),
 }));
 
 vi.mock('@/lib/api/entries', async (importOriginal) => {

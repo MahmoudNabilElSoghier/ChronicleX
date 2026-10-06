@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 
-import { usePathname } from 'next/navigation';
+import { usePathname } from '@/lib/navigation';
 import { useTranslations } from 'next-intl';
 import * as React from 'react';
 import { Separator } from '@/components/ui/separator';

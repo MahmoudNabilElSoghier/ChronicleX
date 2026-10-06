@@ -1,8 +1,9 @@
-'use client';
+﻿'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
+import { useRouter } from '@/lib/navigation';
 import * as React from 'react';
 import { Lock } from 'lucide-react';
 import { toast } from 'sonner';

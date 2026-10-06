@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter } from '@/lib/navigation';
 import { useTranslations } from 'next-intl';
 import * as React from 'react';
 import { toast } from 'sonner';

@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
+import type { ReactNode } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import ar from '@/messages/ar.json';
 import { Topbar } from '@/components/layout/topbar';
@@ -9,6 +10,15 @@ const pathnameMock = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   usePathname: () => pathnameMock(),
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+vi.mock('@/lib/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  usePathname: () => pathnameMock(),
+  Link: ({ children, href }: { children: ReactNode; href: string }) => (
+    <a href={href}>{children}</a>
+  ),
 }));
 
 vi.mock('@/lib/auth/auth-context', () => ({

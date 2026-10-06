@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
+import type { ReactNode } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import ar from '@/messages/ar.json';
 import EntryDetailPage from '@/app/[locale]/(authenticated)/entries/[id]/page';
@@ -12,6 +13,16 @@ const push = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push, replace: vi.fn() }),
   useParams: () => ({ id: 'e1' }),
+}));
+
+vi.mock('@/lib/navigation', () => ({
+  useRouter: () => ({ push, replace: vi.fn() }),
+  usePathname: () => '/entries/e1',
+  useParams: () => ({ id: 'e1' }),
+  Link: ({ children, href }: { children: ReactNode; href: string }) => (
+    <a href={href}>{children}</a>
+  ),
+  redirect: vi.fn(),
 }));
 
 vi.mock('@/lib/api/entries', async (importOriginal) => {

@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ar from '@/messages/ar.json';
 import ProfilePage from '@/app/[locale]/(authenticated)/profile/page';
@@ -8,6 +9,16 @@ import { adminApi } from '@/lib/api/admin';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+}));
+
+vi.mock('@/lib/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  usePathname: () => '/profile',
+  useParams: () => ({ id: 'u1' }),
+  Link: ({ children, href }: { children: ReactNode; href: string }) => (
+    <a href={href}>{children}</a>
+  ),
+  redirect: vi.fn(),
 }));
 
 const logoutMock = vi.fn();

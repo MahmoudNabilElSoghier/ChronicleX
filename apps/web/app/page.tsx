@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
+import { redirect } from '@/lib/navigation';
 
 export default function RootPage() {
-  redirect('/ar');
+  redirect({ href: '/', locale: 'ar' });
 }

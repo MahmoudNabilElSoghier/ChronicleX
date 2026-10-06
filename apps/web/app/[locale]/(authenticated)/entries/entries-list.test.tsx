@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { NuqsTestingAdapter } from 'nuqs/adapters/testing';
+import type { ReactNode } from 'react';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import ar from '@/messages/ar.json';
 import EntriesListPage from '@/app/[locale]/(authenticated)/entries/page';
@@ -13,6 +14,16 @@ const push = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push, replace: vi.fn() }),
   usePathname: () => '/ar/entries',
+}));
+
+vi.mock('@/lib/navigation', () => ({
+  useRouter: () => ({ push, replace: vi.fn() }),
+  usePathname: () => '/ar/entries',
+  useParams: () => ({ id: 'e1' }),
+  Link: ({ children, href }: { children: ReactNode; href: string }) => (
+    <a href={href}>{children}</a>
+  ),
+  redirect: vi.fn(),
 }));
 
 vi.mock('@/lib/api/entries', async (importOriginal) => {

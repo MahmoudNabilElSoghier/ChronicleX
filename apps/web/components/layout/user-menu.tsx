@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter } from '@/lib/navigation';
 import { useTranslations } from 'next-intl';
 import { LogOut, UserRound } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';

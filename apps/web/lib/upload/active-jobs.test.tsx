@@ -12,6 +12,14 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/ar/upload',
 }));
 
+vi.mock('@/lib/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  usePathname: () => '/entries',
+  Link: ({ children, href }: { children: React.ReactNode; href: string }) => (
+    <a href={href}>{children}</a>
+  ),
+}));
+
 vi.mock('@/lib/auth/auth-context', () => ({
   useAuth: () => ({
     user: {

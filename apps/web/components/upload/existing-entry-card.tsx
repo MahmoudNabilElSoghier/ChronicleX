@@ -1,8 +1,8 @@
-'use client';
+﻿'use client';
 
 import { useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
-import Link from 'next/link';
+import { Link } from '@/lib/navigation';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { entriesApi } from '@/lib/api/entries';

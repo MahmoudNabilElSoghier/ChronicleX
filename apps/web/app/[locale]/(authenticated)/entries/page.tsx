@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
-import { useRouter } from 'next/navigation';
+import { useRouter } from '@/lib/navigation';
 import { parseAsInteger, parseAsString, useQueryStates } from 'nuqs';
 import * as React from 'react';
 import { toast } from 'sonner';
