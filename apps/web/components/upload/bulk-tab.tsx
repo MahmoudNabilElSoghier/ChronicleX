@@ -1,52 +1,36 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import * as React from 'react';
-import { CheckCircle2, Loader2, RotateCcw, Trash2, XCircle } from 'lucide-react';
+import { CheckCircle2, Clock, Info, Loader2, RotateCcw, Trash2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Dropzone } from '@/components/upload/dropzone';
-import { ExistingEntryCard } from '@/components/upload/existing-entry-card';
 import { ScopeSelectors } from '@/components/upload/scope-selectors';
 import { type BulkResult } from '@/lib/api/entries';
 import { formatBytes } from '@/lib/format';
 import { useActiveJobs } from '@/lib/upload/active-jobs-context';
-import { useUploadQueue } from '@/lib/upload/use-upload-queue';
+import { HASH_CAP, type UploadItem, useUploadQueue } from '@/lib/upload/use-upload-queue';
 
-function ConflictPreview({ entryId, onClose }: { entryId: string; onClose: () => void }): JSX.Element {
-  const t = useTranslations('upload');
-  return (
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>{t('conflicts.title')}</DialogTitle>
-      </DialogHeader>
-      <ExistingEntryCard entryId={entryId} />
-      <DialogFooter>
-        <Button variant="outline" onClick={onClose}>
-          {t('conflicts.close')}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  );
+interface ResultRow {
+  key: string;
+  name: string;
+  result?: BulkResult | undefined;
+  canRetry: boolean;
 }
 
 export function BulkTab(): JSX.Element {
   const t = useTranslations('upload');
-  const queue = useUploadQueue();
-  const activeJobs = useActiveJobs();
+  const locale = useLocale();
   const [scope, setScope] = React.useState({ companyId: '', projectId: '', year: '' });
-  const [previewId, setPreviewId] = React.useState<string | null>(null);
+  const queue = useUploadQueue(scope);
+  const activeJobs = useActiveJobs();
+  const track = activeJobs?.track;
 
   const scopeValid =
     scope.companyId !== '' && scope.projectId !== '' && /^\d{4}$/.test(scope.year);
   const canSubmit = queue.totalValid > 0 && scopeValid && !queue.isSubmitting && queue.jobId === null;
+  const overCap = queue.items.length > HASH_CAP;
 
   const resultsByName = React.useMemo(() => {
     const map = new Map<string, BulkResult[]>();
@@ -63,6 +47,15 @@ export function BulkTab(): JSX.Element {
     return list?.find((r) => r.status === 'error') ?? list?.[0];
   }
 
+  function checkReasonText(item: UploadItem): string {
+    const r = item.checkReason;
+    if (r === 'duplicate_serial') return t('conflicts.duplicateSerial');
+    if (r === 'duplicate_hash') return t('conflicts.duplicateFile');
+    if (r === 'invalid_filename') return t('bulk.invalidFilename');
+    if (r) return t(`errors.${r}`);
+    return t('bulk.invalidFilename');
+  }
+
   async function submit(): Promise<void> {
     if (!canSubmit) return;
     await queue.submit({
@@ -73,11 +66,28 @@ export function BulkTab(): JSX.Element {
   }
 
   React.useEffect(() => {
-    if (queue.jobId) activeJobs?.track(queue.jobId);
-  }, [queue.jobId, activeJobs]);
+    if (queue.jobId) track?.(queue.jobId);
+  }, [queue.jobId, track]);
 
   const status = queue.jobStatus;
   const done = status?.status === 'done' || status?.status === 'failed';
+
+  // After a reload the queue is empty but the persisted job's report still
+  // renders: fall back to rows derived from jobStatus.results.
+  const resultRows: ResultRow[] =
+    queue.items.length > 0
+      ? queue.items.map((item) => ({
+          key: item.id,
+          name: item.name,
+          result: resultFor(item.name),
+          canRetry: true,
+        }))
+      : (status?.results ?? []).map((r, i) => ({
+          key: `${r.originalName}-${i}`,
+          name: r.originalName,
+          result: r,
+          canRetry: false,
+        }));
 
   return (
     <div className="space-y-4">
@@ -87,9 +97,23 @@ export function BulkTab(): JSX.Element {
           {queue.items.length > 0 ? (
             <Card>
               <CardContent className="space-y-3 p-4">
-                <p className="text-sm text-muted-foreground">
-                  {t('bulk.summary', { valid: queue.totalValid, invalid: queue.totalInvalid })}
-                </p>
+                <div className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
+                  <span>
+                    {t('bulk.summary', { valid: queue.totalValid, invalid: queue.totalInvalid })}
+                  </span>
+                  {overCap ? (
+                    <span
+                      className="inline-flex cursor-help items-center"
+                      title={t('bulk.deferredInfo')}
+                      aria-label={t('bulk.deferredInfo')}
+                    >
+                      <Info className="h-3.5 w-3.5" />
+                    </span>
+                  ) : null}
+                </div>
+                {overCap ? (
+                  <p className="text-xs text-muted-foreground">{t('bulk.deferredNote')}</p>
+                ) : null}
                 <ul className="divide-y">
                   {queue.items.map((item) => (
                     <li key={item.id} className="flex items-center justify-between gap-3 py-2 text-sm">
@@ -100,20 +124,45 @@ export function BulkTab(): JSX.Element {
                         <span className="text-xs text-muted-foreground" dir="ltr">
                           {formatBytes(item.size)}
                         </span>
+                        {item.check === 'invalid' && item.existingEntryId ? (
+                          <a
+                            href={`/${locale}/entries/${item.existingEntryId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block text-xs text-muted-foreground underline hover:text-foreground"
+                          >
+                            {t('conflicts.viewExisting')}
+                          </a>
+                        ) : null}
                       </span>
                       <span className="flex shrink-0 items-center gap-2">
-                        {item.parse.ok ? (
+                        {item.check === 'valid' ? (
                           <span className="flex items-center gap-1 text-xs text-green-700">
                             <CheckCircle2 className="h-4 w-4" />
                             {t('bulk.valid')}
                           </span>
+                        ) : item.check === 'pending_check' ? (
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            {t('bulk.checking')}
+                          </span>
+                        ) : item.check === 'pending_scope' ? (
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Clock className="h-4 w-4" />
+                            {t('bulk.pendingScope')}
+                          </span>
+                        ) : item.check === 'deferred' ? (
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Clock className="h-4 w-4" />
+                            {t('bulk.deferred')}
+                          </span>
                         ) : (
                           <span
                             className="flex items-center gap-1 text-xs text-destructive"
-                            title={t(`errors.${item.parse.code}`)}
+                            title={checkReasonText(item)}
                           >
                             <XCircle className="h-4 w-4" />
-                            {t(`errors.${item.parse.code}`)}
+                            {checkReasonText(item)}
                           </span>
                         )}
                         <Button variant="ghost" size="sm" onClick={() => queue.removeItem(item.id)}>
@@ -122,16 +171,7 @@ export function BulkTab(): JSX.Element {
                       </span>
                     </li>
                   ))}
-            </ul>
-            {done ? (
-              <p className="text-sm font-medium">
-                {t('bulk.finished', {
-                  succeeded: status?.succeeded ?? 0,
-                  total: status?.total ?? 0,
-                  failed: status?.failed ?? 0,
-                })}
-              </p>
-            ) : null}
+                </ul>
                 <ScopeSelectors value={scope} onChange={setScope} disabled={queue.isSubmitting} />
                 <div className="flex gap-2">
                   <Button onClick={() => void submit()} disabled={!canSubmit}>
@@ -167,61 +207,75 @@ export function BulkTab(): JSX.Element {
                 }}
               />
             </div>
+            {done ? (
+              <div className="space-y-1">
+                <p className="text-sm font-medium">
+                  {t('bulk.finished', {
+                    succeeded: status?.succeeded ?? 0,
+                    total: status?.total ?? 0,
+                    failed: status?.failed ?? 0,
+                  })}
+                </p>
+                <p className="text-xs text-muted-foreground">{t('bulk.savedNote')}</p>
+              </div>
+            ) : null}
             <ul className="divide-y">
-              {queue.items.map((item) => {
-                const result = resultFor(item.name);
-                return (
-                  <li key={item.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-                    <span className="min-w-0">
-                      <span className="block truncate font-mono" dir="ltr">
-                        {item.name}
+              {resultRows.map((row) => (
+                <li key={row.key} className="flex items-center justify-between gap-3 py-2 text-sm">
+                  <span className="min-w-0">
+                    <span className="block truncate font-mono" dir="ltr">
+                      {row.name}
+                    </span>
+                    {row.result?.status === 'error' ? (
+                      <span className="text-xs text-destructive">
+                        {row.result.errorCode === 'DUPLICATE_SERIAL'
+                          ? t('conflicts.duplicateSerial')
+                          : row.result.errorCode === 'DUPLICATE_FILE'
+                            ? t('conflicts.duplicateFile')
+                            : (row.result.errorMessage ?? row.result.errorCode)}
                       </span>
-                      {result?.status === 'error' ? (
-                        <span className="text-xs text-destructive">
-                          {result.errorCode === 'DUPLICATE_SERIAL'
-                            ? t('conflicts.duplicateSerial')
-                            : result.errorCode === 'DUPLICATE_FILE'
-                              ? t('conflicts.duplicateFile')
-                              : (result.errorMessage ?? result.errorCode)}
+                    ) : null}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    {!row.result ? (
+                      <span className="text-xs text-muted-foreground">{t('bulk.waiting')}</span>
+                    ) : row.result.status === 'ok' ? (
+                      <span className="flex items-center gap-1 text-xs text-green-700">
+                        <CheckCircle2 className="h-4 w-4" />
+                        {t('bulk.done')}
+                      </span>
+                    ) : (
+                      <>
+                        <span className="flex items-center gap-1 text-xs text-destructive">
+                          <XCircle className="h-4 w-4" />
+                          {t('bulk.failed')}
                         </span>
-                      ) : null}
-                    </span>
-                    <span className="flex shrink-0 items-center gap-2">
-                      {!result ? (
-                        <span className="text-xs text-muted-foreground">{t('bulk.waiting')}</span>
-                      ) : result.status === 'ok' ? (
-                        <span className="flex items-center gap-1 text-xs text-green-700">
-                          <CheckCircle2 className="h-4 w-4" />
-                          {t('bulk.done')}
-                        </span>
-                      ) : (
-                        <>
-                          <span className="flex items-center gap-1 text-xs text-destructive">
-                            <XCircle className="h-4 w-4" />
-                            {t('bulk.failed')}
-                          </span>
-                          {(result.errorCode === 'DUPLICATE_SERIAL' ||
-                            result.errorCode === 'DUPLICATE_FILE') &&
-                          result.existingEntryId ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setPreviewId(result.existingEntryId as string)}
-                            >
-                              {t('conflicts.viewExisting')}
-                            </Button>
-                          ) : (
-                            <Button variant="ghost" size="sm" onClick={() => queue.retryItem(item.id)}>
-                              <RotateCcw className="h-4 w-4" />
-                              {t('retry')}
-                            </Button>
-                          )}
-                        </>
-                      )}
-                    </span>
-                  </li>
-                );
-              })}
+                        {(row.result.errorCode === 'DUPLICATE_SERIAL' ||
+                          row.result.errorCode === 'DUPLICATE_FILE') &&
+                        row.result.existingEntryId ? (
+                          <a
+                            href={`/${locale}/entries/${row.result.existingEntryId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="rounded-md border border-input bg-transparent px-3 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground"
+                          >
+                            {t('conflicts.viewExisting')}
+                          </a>
+                        ) : row.canRetry ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => queue.retryItem(row.key)}
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                            {t('retry')}
+                          </Button>
+                        ) : null}
+                      </>
+                    )}
+                  </span>
+                </li>
+              ))}
             </ul>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => queue.clear()}>
@@ -231,10 +285,6 @@ export function BulkTab(): JSX.Element {
           </CardContent>
         </Card>
       )}
-
-      <Dialog open={previewId !== null} onOpenChange={(open) => !open && setPreviewId(null)}>
-        {previewId ? <ConflictPreview entryId={previewId} onClose={() => setPreviewId(null)} /> : null}
-      </Dialog>
     </div>
   );
 }

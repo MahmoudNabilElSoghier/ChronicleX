@@ -7,6 +7,7 @@ describe('BulkUploadController', () => {
     createJob: jest.fn(),
     getReport: jest.fn(),
     cancel: jest.fn(),
+    preview: jest.fn(),
   };
   const controller = new BulkUploadController(bulk as unknown as BulkUploadService);
   const user = { id: 'owner1', email: 'o@x.y', nameAr: 'ن', nameEn: 'N', isActive: true };
@@ -38,5 +39,38 @@ describe('BulkUploadController', () => {
   it('GET status: unknown jobId → 404 propagates', async () => {
     bulk.getReport.mockRejectedValue(new NotFoundException('Bulk job not found'));
     await expect(controller.bulkStatus('nope', user)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('POST preview: delegates to the service with the caller id', async () => {
+    const dto = {
+      companyId: 'c1',
+      projectId: 'p1',
+      year: 2025,
+      fileNames: ['6200000000.pdf'],
+      fileHashes: ['abc'],
+    };
+    const out = { results: [{ index: 0, status: 'ok' as const }] };
+    bulk.preview.mockResolvedValue(out);
+    await expect(controller.bulkPreview(dto, user)).resolves.toEqual(out);
+    expect(bulk.preview).toHaveBeenCalledWith(
+      {
+        companyId: 'c1',
+        projectId: 'p1',
+        year: 2025,
+        fileNames: ['6200000000.pdf'],
+        fileHashes: ['abc'],
+      },
+      'owner1',
+    );
+  });
+
+  it('POST preview: service 403 propagates', async () => {
+    bulk.preview.mockRejectedValue(new ForbiddenException('Insufficient permissions'));
+    await expect(
+      controller.bulkPreview(
+        { companyId: 'c1', projectId: 'p1', year: 2025, fileNames: ['6200000000.pdf'] },
+        { ...user, id: 'stranger' },
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

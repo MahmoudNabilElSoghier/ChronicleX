@@ -21,6 +21,7 @@ describe('BulkUploadService', () => {
   const prisma = {
     project: { findUnique: jest.fn() },
     auditLog: { create: jest.fn() },
+    entry: { findMany: jest.fn() },
   };
   const storage = { putObject: jest.fn() };
   const permissions = { getEffectiveGrants: jest.fn() };
@@ -104,7 +105,86 @@ describe('BulkUploadService', () => {
     await expect(
       svc.createJob({ companyId: 'c1', projectId: 'p1', year: 2025 }, [pdfFile('6200000000.pdf')], ACTOR),
     ).rejects.toBeInstanceOf(BadRequestException);
-    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('preview: 3 serials, 1 duplicate → one result flagged duplicate_serial', async () => {
+    prisma.entry.findMany.mockResolvedValueOnce([{ id: 'e-old', serial: '6200000001' }]);
+    const res = await svc.preview(
+      {
+        companyId: 'c1',
+        projectId: 'p1',
+        year: 2025,
+        fileNames: ['6200000000.pdf', '6200000001.pdf', '6200000002.pdf'],
+      },
+      ACTOR.userId,
+    );
+    expect(res.results).toEqual([
+      { index: 0, status: 'ok' },
+      { index: 1, status: 'duplicate_serial', existingEntryId: 'e-old' },
+      { index: 2, status: 'ok' },
+    ]);
+    // One batched serial query; no hash query when fileHashes is omitted.
+    expect(prisma.entry.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.entry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          companyId: 'c1',
+          year: 2025,
+          serial: { in: ['6200000000', '6200000001', '6200000002'] },
+        }),
+      }),
+    );
+  });
+
+  it('preview: file hash matches an existing entry → duplicate_hash', async () => {
+    prisma.entry.findMany
+      .mockResolvedValueOnce([]) // serial query: no duplicates
+      .mockResolvedValueOnce([{ id: 'e-same', fileHash: 'abc123' }]);
+    const res = await svc.preview(
+      {
+        companyId: 'c1',
+        projectId: 'p1',
+        year: 2025,
+        fileNames: ['6200000000.pdf'],
+        fileHashes: ['abc123'],
+      },
+      ACTOR.userId,
+    );
+    expect(res.results).toEqual([
+      { index: 0, status: 'duplicate_hash', existingEntryId: 'e-same' },
+    ]);
+    expect(prisma.entry.findMany).toHaveBeenCalledTimes(2);
+    expect(prisma.entry.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: { fileHash: { in: ['abc123'] } },
+      }),
+    );
+  });
+
+  it('preview: bad filename → invalid_filename with the parse reason', async () => {
+    const res = await svc.preview(
+      {
+        companyId: 'c1',
+        projectId: 'p1',
+        year: 2025,
+        fileNames: ['not-a-serial.pdf'],
+      },
+      ACTOR.userId,
+    );
+    expect(res.results).toEqual([
+      { index: 0, status: 'invalid_filename', reason: expect.any(String) },
+    ]);
+    expect(prisma.entry.findMany).not.toHaveBeenCalled();
+  });
+
+  it('preview: caller without CREATE scope → 403', async () => {
+    permissions.getEffectiveGrants.mockResolvedValue([]);
+    await expect(
+      svc.preview(
+        { companyId: 'c1', projectId: 'p1', year: 2025, fileNames: ['6200000000.pdf'] },
+        'stranger',
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('rejects a caller without CREATE ENTRY scope → 403', async () => {

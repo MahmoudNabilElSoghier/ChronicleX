@@ -56,6 +56,21 @@ export interface BulkUploadInput {
   year: number;
 }
 
+export interface PreviewInput {
+  companyId: string;
+  projectId: string;
+  year: number;
+  fileNames: string[];
+  fileHashes?: string[] | undefined;
+}
+
+export interface PreviewResult {
+  index: number;
+  status: 'ok' | 'duplicate_serial' | 'duplicate_hash' | 'invalid_filename';
+  existingEntryId?: string;
+  reason?: string;
+}
+
 @Injectable()
 export class BulkUploadService {
   constructor(
@@ -202,6 +217,89 @@ export class BulkUploadService {
       immediateFailures: immediate.length,
       statusUrl: `/entries/bulk-upload/${jobId}`,
     };
+  }
+
+  /**
+   * Pre-flight conflict check: what WOULD happen if these files were
+   * uploaded into (companyId, year)? Two batched queries for N files.
+   * Serial conflicts are scope-bound (company+year); hash conflicts are
+   * global (the file content is unique regardless of scope).
+   */
+  async preview(
+    input: PreviewInput,
+    userId: string,
+  ): Promise<{ results: PreviewResult[] }> {
+    if (input.fileNames.length > MAX_BULK_FILES) {
+      throw new BadRequestException(`At most ${MAX_BULK_FILES} files per bulk upload`);
+    }
+    const project = await this.prisma.project.findUnique({
+      where: { id: input.projectId },
+    });
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+    if (project.companyId !== input.companyId) {
+      throw new BadRequestException('Project does not belong to the given company');
+    }
+    await this.requireCreateScope(input.companyId, input.projectId, userId);
+
+    const parsed = input.fileNames.map((name) => {
+      try {
+        return { serial: parseSerialFromFilename(name).serial };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : 'Invalid filename' };
+      }
+    });
+
+    const serials = [
+      ...new Set(
+        parsed.flatMap((p) => ('serial' in p ? [p.serial] : [])),
+      ),
+    ];
+    const dupSerials =
+      serials.length > 0
+        ? await this.prisma.entry.findMany({
+            where: {
+              companyId: input.companyId,
+              year: input.year,
+              serial: { in: serials },
+            },
+            select: { id: true, serial: true },
+          })
+        : [];
+    const serialToId = new Map(dupSerials.map((e) => [e.serial, e.id]));
+
+    const hashes = [...new Set((input.fileHashes ?? []).filter(Boolean))];
+    const dupHashes =
+      hashes.length > 0
+        ? await this.prisma.entry.findMany({
+            where: { fileHash: { in: hashes } },
+            select: { id: true, fileHash: true },
+          })
+        : [];
+    const hashToId = new Map(dupHashes.map((e) => [e.fileHash, e.id]));
+
+    const results: PreviewResult[] = input.fileNames.map((_, index) => {
+      const p = parsed[index];
+      if (!p || 'error' in p) {
+        return {
+          index,
+          status: 'invalid_filename',
+          reason: p && 'error' in p ? p.error : 'Invalid filename',
+        };
+      }
+      const existingSerialId = serialToId.get(p.serial);
+      if (existingSerialId) {
+        return { index, status: 'duplicate_serial', existingEntryId: existingSerialId };
+      }
+      const hash = input.fileHashes?.[index];
+      const existingHashId = hash ? hashToId.get(hash) : undefined;
+      if (existingHashId) {
+        return { index, status: 'duplicate_hash', existingEntryId: existingHashId };
+      }
+      return { index, status: 'ok' };
+    });
+    return { results };
   }
 
   private async requireReportAccess(job: Record<string, string>, userId: string): Promise<void> {

@@ -22,7 +22,7 @@ import type { AuthenticatedUser } from '../auth/types';
 import { Throttle } from '@nestjs/throttler';
 import { PermissionsGuard } from '../rbac/guards/permissions.guard';
 import { BulkUploadService } from './bulk-upload.service';
-import { BulkUploadDto } from './dto/bulk-upload.dto';
+import { BulkUploadDto, PreviewBulkDto } from './dto/bulk-upload.dto';
 
 @Controller('entries')
 @UseGuards(PermissionsGuard)
@@ -61,6 +61,27 @@ export class BulkUploadController {
       ip,
       userAgent: userAgent ?? null,
     });
+  }
+
+  @Post('bulk-upload/preview')
+  @RequirePermission('CREATE', 'ENTRY')
+  async bulkPreview(
+    @Body() dto: PreviewBulkDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<unknown> {
+    // No scopeHint needed: the body IS parsed before guards for JSON
+    // requests, but the service enforces project-scoped CREATE access
+    // anyway (same rule as bulkUpload).
+    return this.bulk.preview(
+      {
+        companyId: dto.companyId,
+        projectId: dto.projectId,
+        year: dto.year,
+        fileNames: dto.fileNames,
+        fileHashes: dto.fileHashes,
+      },
+      user.id,
+    );
   }
 
   @Get('bulk-upload/:jobId')

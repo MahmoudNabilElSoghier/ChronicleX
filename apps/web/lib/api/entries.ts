@@ -33,6 +33,23 @@ export interface BulkStatus {
   resultsTruncated: boolean;
 }
 
+export type PreviewStatus = 'ok' | 'duplicate_serial' | 'duplicate_hash' | 'invalid_filename';
+
+export interface PreviewResult {
+  index: number;
+  status: PreviewStatus;
+  existingEntryId?: string;
+  reason?: string;
+}
+
+export interface PreviewInput {
+  companyId: string;
+  projectId: string;
+  year: number;
+  fileNames: string[];
+  fileHashes?: string[];
+}
+
 export interface EntryListItem {
   id: string;
   serial: string;
@@ -151,4 +168,9 @@ export const uploadApi = {
     api.request<BulkStatus>(`/entries/bulk-upload/${jobId}`),
   bulkCancel: (jobId: string): Promise<void> =>
     api.request<void>(`/entries/bulk-upload/${jobId}/cancel`, { method: 'POST' }),
+  preview: (input: PreviewInput): Promise<{ results: PreviewResult[] }> =>
+    api.request<{ results: PreviewResult[] }>('/entries/bulk-upload/preview', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 };

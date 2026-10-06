@@ -104,7 +104,11 @@
       "error": "Could not load the entry",
       "retry": "Retry",
       "deletedBanner": "This entry is deleted",
-      "tabs": { "metadata": "Metadata", "audit": "Audit trail", "actions": "Actions" },
+      "tabs": {
+        "metadata": "Metadata",
+        "audit": "Audit trail",
+        "actions": "Actions"
+      },
       "serial": "Serial",
       "typePrefix": "Type prefix",
       "counter": "Counter",
@@ -148,7 +152,10 @@
   },
   "upload": {
     "title": "Upload entries",
-    "tabs": { "single": "Single entry", "bulk": "Bulk upload" },
+    "tabs": {
+      "single": "Single entry",
+      "bulk": "Bulk upload"
+    },
     "dropzone": "Drag the file here or click to choose",
     "dropzoneHint": "PDF only, up to 50 MB per file",
     "company": "Company",
@@ -172,13 +179,20 @@
       "valid": "Valid",
       "submit": "Upload all",
       "clear": "Clear all",
-      "newBatch": "New batch",
+      "newBatch": "Start new batch",
       "waiting": "Waiting",
       "processing": "Processing",
       "done": "Done",
       "failed": "Failed",
       "progress": "{processed} / {total}",
-      "finished": "Uploaded {succeeded} of {total}, {failed} failed"
+      "finished": "Uploaded {succeeded} of {total}, {failed} failed",
+      "pendingScope": "Waiting for scope",
+      "checking": "Checking...",
+      "invalidFilename": "Invalid filename",
+      "savedNote": "You can start a new batch anytime — this result is saved.",
+      "deferred": "Checked at upload",
+      "deferredNote": "For instant duplicate checking, batches of up to 20 files are recommended. Larger batches are validated during upload.",
+      "deferredInfo": "Checking rows are hidden for batches over 20 files to keep drop instant; duplicates are detected server-side during upload."
     },
     "errors": {
       "INVALID_LENGTH": "Filename must be exactly 10 digits before .pdf",

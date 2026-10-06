@@ -32,6 +32,7 @@ vi.mock('@/lib/api/entries', async (importOriginal) => {
       bulk: vi.fn(),
       bulkStatus: vi.fn(),
       bulkCancel: vi.fn(),
+      preview: vi.fn(),
     },
     entriesApi: {
       get: vi.fn(),
@@ -101,6 +102,7 @@ async function fillScope(): Promise<void> {
 describe('UploadPage single tab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
   });
 
   it('valid file enables submit; success shows the entry link', async () => {
@@ -157,6 +159,7 @@ describe('UploadPage single tab', () => {
 describe('UploadPage bulk tab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
   });
 
   it('2 valid + 1 invalid: submit enabled, only valid files sent', async () => {
@@ -184,5 +187,90 @@ describe('UploadPage bulk tab', () => {
     await waitFor(() => expect(bulkMock).toHaveBeenCalledTimes(1));
     const formData = bulkMock.mock.calls[0]?.[0] as FormData;
     expect(formData.getAll('files')).toHaveLength(2);
+  });
+
+  it('restored batch after reload: results shown, view existing opens in a new tab', async () => {
+    const { uploadApi: api } = await import('@/lib/api/entries');
+    vi.mocked(api.bulkStatus).mockResolvedValue({
+      jobId: 'job1', status: 'done', total: 1, processed: 1, succeeded: 0, failed: 1,
+      createdAt: new Date().toISOString(),
+      results: [{
+        fileUuid: 'f1',
+        originalName: '6200000000.pdf',
+        status: 'error',
+        errorCode: 'DUPLICATE_SERIAL',
+        errorMessage: 'Serial already exists',
+        existingEntryId: 'e9',
+      }],
+      resultsTruncated: false,
+    });
+    sessionStorage.setItem(
+      'bulk-upload:last',
+      JSON.stringify({ jobId: 'job1', companyId: 'c1', projectId: 'p1', year: 2025 }),
+    );
+    renderUpload();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('tab', { name: /رفع متعدد/ }));
+
+    await waitFor(() => expect(screen.getByText(/6200000000\.pdf/)).toBeInTheDocument());
+    const link = screen.getByRole('link', { name: /عرض القيد الموجود/ });
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('href', '/ar/entries/e9');
+    await waitFor(() => expect(screen.getByText(/تم رفع 0 من 1/)).toBeInTheDocument());
+    expect(screen.getByText(/يمكنك بدء دفعة جديدة/)).toBeInTheDocument();
+
+    // "Start new batch" clears the queue AND the persisted key.
+    fireEvent.click(screen.getByRole('button', { name: /بدء دفعة جديدة/ }));
+    await waitFor(() =>
+      expect(document.querySelector('input[type="file"]')).toBeInTheDocument(),
+    );
+    expect(sessionStorage.getItem('bulk-upload:last')).toBeNull();
+  });
+
+  it('25 files: skips hashing and preview; shows the large-batch note', async () => {
+    const digestMock = vi.fn().mockResolvedValue(new ArrayBuffer(32));
+    Object.defineProperty(globalThis.crypto, 'subtle', {
+      configurable: true,
+      value: { digest: digestMock },
+    });
+    const { uploadApi: api } = await import('@/lib/api/entries');
+    const files = Array.from(
+      { length: 25 },
+      (_, i) => pdf(`62${String(i).padStart(8, '0')}.pdf`),
+    );
+    renderUpload();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('tab', { name: /رفع متعدد/ }));
+    await waitFor(() =>
+      expect(document.querySelectorAll('input[type="file"]')).toHaveLength(1),
+    );
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files } });
+    await waitFor(() => expect(screen.getByText(/25 صالح، 0 خطأ/)).toBeInTheDocument());
+    await fillScope();
+
+    await waitFor(() =>
+      expect(screen.getByText(/دفعات ≤ 20 ملف/)).toBeInTheDocument(),
+    );
+    expect(screen.getAllByText('يتم التحقق عند الرفع')).toHaveLength(25);
+    expect(screen.queryByText('جاري التحقق...')).not.toBeInTheDocument();
+
+    // give a (never-scheduled) debounced preview time to prove it absent
+    await new Promise((r) => setTimeout(r, 600));
+    expect(vi.mocked(api.preview)).not.toHaveBeenCalled();
+    expect(digestMock).not.toHaveBeenCalled();
+
+    // submit still works — server validates the batch post-upload
+    const bulkLocal = vi.mocked(api.bulk);
+    bulkLocal.mockResolvedValue({
+      jobId: 'job9', status: 'processing', total: 25, immediateFailures: 0, statusUrl: '/x',
+    });
+    vi.mocked(api.bulkStatus).mockResolvedValue({
+      jobId: 'job9', status: 'done', total: 25, processed: 25, succeeded: 25, failed: 0,
+      createdAt: new Date().toISOString(), results: [], resultsTruncated: false,
+    });
+    fireEvent.click(screen.getByRole('button', { name: /رفع الكل/ }));
+    await waitFor(() => expect(bulkLocal).toHaveBeenCalledTimes(1));
+    expect((bulkLocal.mock.calls[0]?.[0] as FormData).getAll('files')).toHaveLength(25);
   });
 });

@@ -62,6 +62,11 @@ model Project {
   @@index([companyId])
 }
 
+// TODO(schema-review): confirm with stakeholders whether serials are
+// globally unique per year (single SAP instance) or per-company-per-year
+// (separate SAP instances). Currently scoped to companyId. If global, the
+// constraint becomes @@unique([year, serial]) and requires a
+// data-integrity migration.
 model Entry {
   id         String    @id @default(cuid())
   companyId  String
