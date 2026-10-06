@@ -131,11 +131,12 @@ export class EntriesController {
     @Ip() ip: string,
     @Headers('user-agent') userAgent: string | undefined,
   ): Promise<void> {
+    // 1. CORS FIRST — before any await, before any pipe. If getStreamTarget
+    // throws below, the error response still carries CORS headers.
+    applyCorsHeaders(req, res, this.corsOrigins());
+    // 2. Then everything else.
     const target = await this.entries.getStreamTarget(id);
     const range = parseRange(req.headers.range, target.fileSize);
-    // Explicit CORS: this handler pipes a raw stream past Nest's pipeline,
-    // so it sets the same headers the global middleware would (Option B).
-    applyCorsHeaders(req, res, this.corsOrigins());
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${target.serial}.pdf"`);
     res.setHeader('Accept-Ranges', 'bytes');
