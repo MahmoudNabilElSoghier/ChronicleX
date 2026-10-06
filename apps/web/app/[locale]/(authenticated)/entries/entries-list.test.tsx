@@ -66,10 +66,12 @@ function item(id: string, serial: string): EntryListItem {
   };
 }
 
-function renderList(): void {
+type UrlUpdate = { searchParams: URLSearchParams; queryString: string };
+
+function renderList(opts?: { onUrlUpdate?: (event: UrlUpdate) => void }): void {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
-    <NuqsTestingAdapter hasMemory>
+    <NuqsTestingAdapter hasMemory onUrlUpdate={opts?.onUrlUpdate}>
       <QueryClientProvider client={client}>
         <NextIntlClientProvider locale="ar" messages={ar}>
           <EntriesListPage />
@@ -146,5 +148,53 @@ describe('EntriesListPage', () => {
     await user.click(screen.getByRole('button', { name: /عرض المزيد/ }));
     await waitFor(() => expect(screen.getByText('6200000003')).toBeInTheDocument());
     expect(listMock).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: 'e2' }));
+  });
+
+  it('serial range triggers a request with serialFrom and serialTo in the queryKey', async () => {
+    const user = userEvent.setup();
+    renderList();
+    await waitFor(() => expect(screen.getByText('6200000001')).toBeInTheDocument());
+    await user.type(screen.getByLabelText('من'), '6200000010');
+    await user.type(screen.getByLabelText('إلى'), '6200000050');
+    await waitFor(() =>
+      expect(listMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ serialFrom: '6200000010', serialTo: '6200000050' }),
+      ),
+    );
+    // Cursor pagination restarts on any filter change.
+    expect(listMock).not.toHaveBeenCalledWith(expect.objectContaining({ cursor: expect.anything() }));
+  });
+
+  it('serialFrom > serialTo shows the validation message and does NOT fire the request', async () => {
+    const user = userEvent.setup();
+    renderList();
+    await waitFor(() => expect(screen.getByText('6200000001')).toBeInTheDocument());
+    await user.type(screen.getByLabelText('من'), '6200000050');
+    await user.type(screen.getByLabelText('إلى'), '6200000010');
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'يجب أن يكون الرقم الأول أصغر من أو يساوي الثاني',
+      ),
+    );
+    expect(listMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ serialFrom: '6200000050', serialTo: '6200000010' }),
+    );
+  });
+
+  it('"مسح المدى" clears both inputs and removes them from the URL', async () => {
+    const user = userEvent.setup();
+    const onUrlUpdate = vi.fn();
+    renderList({ onUrlUpdate });
+    await waitFor(() => expect(screen.getByText('6200000001')).toBeInTheDocument());
+    await user.type(screen.getByLabelText('من'), '6200000010');
+    await user.type(screen.getByLabelText('إلى'), '6200000050');
+    await waitFor(() => expect(onUrlUpdate).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: 'مسح المدى' }));
+    await waitFor(() => expect(screen.getByLabelText('من')).toHaveValue(''));
+    expect(screen.getByLabelText('إلى')).toHaveValue('');
+    expect(screen.queryByRole('button', { name: 'مسح المدى' })).not.toBeInTheDocument();
+    const lastUrl = onUrlUpdate.mock.calls.at(-1)?.[0] as UrlUpdate;
+    expect(lastUrl.searchParams.has('serialFrom')).toBe(false);
+    expect(lastUrl.searchParams.has('serialTo')).toBe(false);
   });
 });

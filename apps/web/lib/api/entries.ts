@@ -79,6 +79,8 @@ export interface EntriesFilters {
   year?: number;
   typePrefix?: string;
   serial?: string;
+  serialFrom?: string;
+  serialTo?: string;
   q?: string;
   includeDeleted?: boolean;
   cursor?: string;

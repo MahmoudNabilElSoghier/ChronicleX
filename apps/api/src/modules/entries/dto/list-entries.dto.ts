@@ -4,6 +4,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   Max,
   Min,
 } from 'class-validator';
@@ -29,6 +30,16 @@ export class ListEntriesDto {
   @IsOptional()
   @IsString()
   serial?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{10}$/, { message: 'serialFrom must be exactly 10 digits' })
+  serialFrom?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{10}$/, { message: 'serialTo must be exactly 10 digits' })
+  serialTo?: string;
 
   @IsOptional()
   @IsString()

@@ -201,6 +201,79 @@ describe('EntriesService', () => {
     expect(where.AND[0]).toEqual({ OR: [{ projectId: { in: ['p1'] } }] });
   });
 
+  it('list: serialFrom only → WHERE serial: { gte } (scope clause untouched)', async () => {
+    permissions.getEffectiveGrants.mockResolvedValue([
+      { action: 'VIEW', resource: 'ENTRY', scopeType: 'COMPANY', scopeId: 'c1' },
+    ]);
+    prisma.entry.findMany.mockResolvedValue([]);
+    await svc.list(
+      { limit: 50, includeDeleted: false, serialFrom: '6200000010' } as never,
+      ACTOR,
+    );
+    const where = prisma.entry.findMany.mock.calls[0][0].where as { AND: unknown[] };
+    expect(where.AND).toContainEqual({ serial: { gte: '6200000010' } });
+    expect(where.AND[0]).toEqual({ OR: [{ companyId: { in: ['c1'] } }] });
+  });
+
+  it('list: serialTo only → WHERE serial: { lte }', async () => {
+    permissions.getEffectiveGrants.mockResolvedValue([
+      { action: 'VIEW', resource: 'ENTRY', scopeType: 'GROUP', scopeId: '' },
+    ]);
+    prisma.entry.findMany.mockResolvedValue([]);
+    await svc.list({ limit: 50, includeDeleted: false, serialTo: '6200000050' } as never, ACTOR);
+    const where = prisma.entry.findMany.mock.calls[0][0].where as { AND: unknown[] };
+    expect(where.AND).toContainEqual({ serial: { lte: '6200000050' } });
+  });
+
+  it('list: both serialFrom and serialTo → WHERE serial: { gte, lte }', async () => {
+    permissions.getEffectiveGrants.mockResolvedValue([
+      { action: 'VIEW', resource: 'ENTRY', scopeType: 'GROUP', scopeId: '' },
+    ]);
+    prisma.entry.findMany.mockResolvedValue([]);
+    await svc.list(
+      {
+        limit: 50,
+        includeDeleted: false,
+        serialFrom: '6200000010',
+        serialTo: '6200000050',
+      } as never,
+      ACTOR,
+    );
+    const where = prisma.entry.findMany.mock.calls[0][0].where as { AND: unknown[] };
+    expect(where.AND).toContainEqual({
+      serial: { gte: '6200000010', lte: '6200000050' },
+    });
+  });
+
+  it('list: neither serialFrom nor serialTo → WHERE has no serial range key', async () => {
+    permissions.getEffectiveGrants.mockResolvedValue([
+      { action: 'VIEW', resource: 'ENTRY', scopeType: 'GROUP', scopeId: '' },
+    ]);
+    prisma.entry.findMany.mockResolvedValue([]);
+    await svc.list({ limit: 50, includeDeleted: false } as never, ACTOR);
+    const where = prisma.entry.findMany.mock.calls[0][0].where as { AND: unknown[] };
+    const serialClauses = where.AND.filter(
+      (c): c is Record<string, unknown> =>
+        typeof c === 'object' && c !== null && 'serial' in c,
+    );
+    expect(serialClauses).toEqual([]);
+  });
+
+  it('list: serialFrom > serialTo → 400 before any query', async () => {
+    await expect(
+      svc.list(
+        {
+          limit: 50,
+          includeDeleted: false,
+          serialFrom: '6200000050',
+          serialTo: '6200000010',
+        } as never,
+        ACTOR,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.entry.findMany).not.toHaveBeenCalled();
+  });
+
   it('list: no ENTRY:VIEW grant → 403', async () => {
     permissions.getEffectiveGrants.mockResolvedValue([
       { action: 'VIEW', resource: 'PROJECT', scopeType: 'GROUP', scopeId: '' },

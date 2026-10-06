@@ -170,6 +170,9 @@ export class EntriesService {
   }
 
   async list(query: ListEntriesDto, actor: Actor): Promise<Record<string, unknown>> {
+    if (query.serialFrom && query.serialTo && query.serialFrom > query.serialTo) {
+      throw new BadRequestException('serialFrom must be less than or equal to serialTo');
+    }
     const scopeWhere = await this.buildScopeWhere(actor.userId);
 
     if (query.includeDeleted) {
@@ -186,6 +189,16 @@ export class EntriesService {
     if (query.year !== undefined) and.push({ year: query.year });
     if (query.typePrefix) and.push({ typePrefix: query.typePrefix });
     if (query.serial) and.push({ serial: query.serial });
+    if (query.serialFrom || query.serialTo) {
+      // Serials are VARCHAR(10) zero-padded digits: lexicographic order
+      // matches numeric order, so gte/lte on strings is exact.
+      and.push({
+        serial: {
+          ...(query.serialFrom ? { gte: query.serialFrom } : {}),
+          ...(query.serialTo ? { lte: query.serialTo } : {}),
+        },
+      });
+    }
     if (query.q) and.push({ fileName: { contains: query.q, mode: 'insensitive' } });
     if (!query.includeDeleted) and.push({ deletedAt: null });
 

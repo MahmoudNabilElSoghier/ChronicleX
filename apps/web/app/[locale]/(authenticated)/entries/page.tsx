@@ -29,6 +29,8 @@ export default function EntriesListPage(): JSX.Element {
     year: parseAsInteger,
     typePrefix: parseAsString.withDefault(''),
     serial: parseAsString.withDefault(''),
+    serialFrom: parseAsString.withDefault(''),
+    serialTo: parseAsString.withDefault(''),
     q: parseAsString.withDefault(''),
     includeDeleted: parseAsString.withDefault(''),
   });
@@ -43,15 +45,22 @@ export default function EntriesListPage(): JSX.Element {
     if (filters.year !== null) f.year = filters.year;
     if (filters.typePrefix !== '') f.typePrefix = filters.typePrefix;
     if (filters.serial !== '') f.serial = filters.serial;
+    if (filters.serialFrom !== '') f.serialFrom = filters.serialFrom;
+    if (filters.serialTo !== '') f.serialTo = filters.serialTo;
     if (filters.q !== '') f.q = filters.q;
     if (filters.includeDeleted === 'true') f.includeDeleted = true;
     if (cursor !== undefined) f.cursor = cursor;
     return f;
   }, [filters, cursor]);
 
+  // Serials are fixed-width digits, so string comparison is numeric order.
+  const serialRangeInvalid =
+    filters.serialFrom !== '' && filters.serialTo !== '' && filters.serialFrom > filters.serialTo;
+
   const entriesQuery = useQuery({
     queryKey: ['entries', queryFilters],
     queryFn: () => entriesApi.list(queryFilters),
+    enabled: !serialRangeInvalid,
   });
   const companiesQuery = useQuery({ queryKey: ['companies'], queryFn: () => catalogApi.companies() });
   const projectsQuery = useQuery({
@@ -67,6 +76,8 @@ export default function EntriesListPage(): JSX.Element {
       year: null,
       typePrefix: '',
       serial: '',
+      serialFrom: '',
+      serialTo: '',
       q: '',
       includeDeleted: '',
     });
@@ -205,6 +216,50 @@ export default function EntriesListPage(): JSX.Element {
               onChange={(e) => patchFilters({ serial: e.target.value })}
               placeholder="6200000000"
             />
+          </div>
+          <div className="space-y-1 md:col-span-2">
+            <span className="text-sm font-medium leading-none">{t('filters.serialRange')}</span>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="f-serial-from" className="text-muted-foreground">
+                {t('filters.serialFrom')}
+              </Label>
+              <Input
+                id="f-serial-from"
+                dir="ltr"
+                inputMode="numeric"
+                maxLength={10}
+                placeholder="6200000000"
+                value={filters.serialFrom}
+                onChange={(e) => patchFilters({ serialFrom: e.target.value })}
+              />
+              <Label htmlFor="f-serial-to" className="text-muted-foreground">
+                {t('filters.serialTo')}
+              </Label>
+              <Input
+                id="f-serial-to"
+                dir="ltr"
+                inputMode="numeric"
+                maxLength={10}
+                placeholder="6200000000"
+                value={filters.serialTo}
+                onChange={(e) => patchFilters({ serialTo: e.target.value })}
+              />
+              {filters.serialFrom !== '' || filters.serialTo !== '' ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => patchFilters({ serialFrom: '', serialTo: '' })}
+                >
+                  {t('filters.clearRange')}
+                </Button>
+              ) : null}
+            </div>
+            {serialRangeInvalid ? (
+              <p className="text-sm text-destructive" role="alert">
+                {t('filters.serialRangeInvalid')}
+              </p>
+            ) : null}
           </div>
           <div className="space-y-1">
             <Label htmlFor="f-q">{t('filters.search')}</Label>
