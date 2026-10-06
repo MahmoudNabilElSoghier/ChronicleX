@@ -55,12 +55,12 @@ export function EntriesTable({
       {
         accessorKey: 'company',
         header: () => t('columns.company'),
-        cell: ({ row }) => row.original.company.nameAr,
+        cell: ({ row }) => row.original.company?.nameAr ?? '—',
       },
       {
         accessorKey: 'project',
         header: () => t('columns.project'),
-        cell: ({ row }) => row.original.project.nameAr,
+        cell: ({ row }) => row.original.project?.nameAr ?? '—',
       },
       {
         accessorKey: 'year',

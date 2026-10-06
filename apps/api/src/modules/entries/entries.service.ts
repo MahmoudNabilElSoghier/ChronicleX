@@ -195,9 +195,17 @@ export class EntriesService {
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
       take: limit + 1,
+      include: {
+        company: { select: { id: true, code: true, nameAr: true, nameEn: true } },
+        project: { select: { id: true, code: true, nameAr: true, nameEn: true } },
+        uploader: { select: { id: true, nameAr: true, nameEn: true } },
+      },
     });
     const hasMore = rows.length > limit;
-    const items = hasMore ? rows.slice(0, limit) : rows;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    // API contract names the relation `uploadedBy` (the Prisma relation is
+    // `uploader`; the raw FK string must never leak to clients).
+    const items = page.map(({ uploader, ...rest }) => ({ ...rest, uploadedBy: uploader }));
     const last = items.length > 0 ? items[items.length - 1] : undefined;
     return {
       items,
@@ -221,7 +229,8 @@ export class EntriesService {
     if (!entry) {
       throw new NotFoundException('Entry not found');
     }
-    return entry as unknown as Record<string, unknown>;
+    const { uploader, ...rest } = entry;
+    return { ...rest, uploadedBy: uploader } as unknown as Record<string, unknown>;
   }
 
   async getStreamTarget(id: string): Promise<{ id: string; fileKey: string; fileSize: number; serial: string }> {

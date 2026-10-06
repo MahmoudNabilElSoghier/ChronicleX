@@ -148,6 +148,39 @@ describe('EntriesService', () => {
     expect(where.AND).toEqual([{}, { deletedAt: null }]);
   });
 
+  it('list: items carry company/project/uploader relations + uploadedBy alias', async () => {
+    permissions.getEffectiveGrants.mockResolvedValue([
+      { action: 'VIEW', resource: 'ENTRY', scopeType: 'GROUP', scopeId: '' },
+    ]);
+    prisma.entry.findMany.mockResolvedValue([
+      {
+        id: 'e1',
+        uploadedBy: 'u1',
+        company: { id: 'c1', nameAr: 'الشركة' },
+        project: { id: 'p1', nameAr: 'الرحاب' },
+        uploader: { id: 'u1', nameAr: 'مدير' },
+      },
+    ]);
+    const res = (await svc.list({ limit: 50, includeDeleted: false } as never, ACTOR)) as {
+      items: Array<Record<string, unknown>>;
+    };
+    expect(prisma.entry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          company: expect.anything(),
+          project: expect.anything(),
+          uploader: expect.anything(),
+        }),
+      }),
+    );
+    expect(res.items[0]).toMatchObject({
+      company: { nameAr: 'الشركة' },
+      project: { nameAr: 'الرحاب' },
+      uploadedBy: { id: 'u1', nameAr: 'مدير' },
+    });
+    expect(res.items[0]).not.toHaveProperty('uploader');
+  });
+
   it('list: COMPANY_ADMIN scoped to c1 → WHERE contains companyId=c1', async () => {
     permissions.getEffectiveGrants.mockResolvedValue([
       { action: 'VIEW', resource: 'ENTRY', scopeType: 'COMPANY', scopeId: 'c1' },
