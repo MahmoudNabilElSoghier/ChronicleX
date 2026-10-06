@@ -171,7 +171,7 @@ export default function EntryDetailPage(): JSX.Element {
               </div>
             }
           >
-            <PdfViewer id={entry.id} fileName={entry.fileName} deleted={entry.deletedAt !== null} />
+            <PdfViewer id={entry.id} fileName={entry.fileName} fileSize={entry.fileSize} deleted={entry.deletedAt !== null} />
           </ErrorBoundary>
         </div>
 

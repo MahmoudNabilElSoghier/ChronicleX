@@ -2,48 +2,64 @@
 
 import { useTranslations } from 'next-intl';
 import * as React from 'react';
-import { FileX, Loader2 } from 'lucide-react';
+import { Eye, FileText, FileX, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { entriesApi } from '@/lib/api/entries';
 import { openBlob, saveBlob } from '@/lib/download';
+import { formatBytes } from '@/lib/format';
 
 export function PdfViewer({
   id,
   fileName,
+  fileSize,
   deleted,
 }: {
   id: string;
   fileName: string;
+  fileSize: number;
   deleted: boolean;
 }): JSX.Element {
   const t = useTranslations('entries');
+  const [started, setStarted] = React.useState(false);
   const [url, setUrl] = React.useState<string | null>(null);
-  const [error, setError] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const urlRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
-    // Deleted entries have no viewable file (backend 404s by design).
-    // Never fetch — render the tombstone immediately.
-    if (deleted) return;
-    let cancelled = false;
-    let objectUrl: string | null = null;
+    setStarted(false);
     setUrl(null);
-    setError(false);
+    setLoading(false);
+    setError(null);
+  }, [id]);
+
+  React.useEffect(
+    () => () => {
+      if (urlRef.current) {
+        URL.revokeObjectURL(urlRef.current);
+        urlRef.current = null;
+      }
+    },
+    [id],
+  );
+
+  function showFile(): void {
+    setStarted(true);
+    setLoading(true);
+    setError(null);
     entriesApi
       .download(id)
       .then((blob) => {
-        if (cancelled) return;
-        objectUrl = URL.createObjectURL(blob);
+        const objectUrl = URL.createObjectURL(blob);
+        urlRef.current = objectUrl;
         setUrl(objectUrl);
+        setLoading(false);
       })
-      .catch(() => {
-        if (!cancelled) setError(true);
+      .catch((err: unknown) => {
+        setLoading(false);
+        setError(err instanceof Error ? err.message : 'download failed');
       });
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [id, deleted]);
+  }
 
   if (deleted) {
     return (
@@ -55,10 +71,13 @@ export function PdfViewer({
     );
   }
 
-  if (error) {
+  if (error !== null) {
     return (
       <div className="flex h-full min-h-96 flex-col items-center justify-center gap-4 rounded-md border p-6 text-center">
         <p className="text-sm text-muted-foreground">{t('pdfError')}</p>
+        <p className="font-mono text-[11px] text-muted-foreground" dir="ltr">
+          {error}
+        </p>
         <Button
           variant="outline"
           onClick={() => {
@@ -80,17 +99,34 @@ export function PdfViewer({
     );
   }
 
-  if (!url) {
+  if (!started || loading || !url) {
     return (
-      <div className="flex h-full min-h-96 flex-col gap-4 rounded-md border p-6">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <span className="truncate">{fileName}</span>
+      <div className="flex h-full min-h-96 flex-col items-center justify-center gap-4 rounded-md border p-6 text-center">
+        <FileText className="h-10 w-10 text-muted-foreground" />
+        <div>
+          <p className="truncate font-mono text-sm" dir="ltr">
+            {fileName}
+          </p>
+          <p className="text-xs text-muted-foreground" dir="ltr">
+            {formatBytes(fileSize)} · PDF
+          </p>
         </div>
-        <Skeleton className="h-96 flex-1" />
+        <Button onClick={showFile} disabled={loading}>
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+          {t('showFile')}
+        </Button>
       </div>
     );
   }
 
-  return <iframe src={url} title={fileName} className="h-full min-h-[70vh] w-full rounded-md border-0" />;
+  return (
+    <object data={url} type="application/pdf" className="h-full min-h-[70vh] w-full rounded-md">
+      <div className="flex flex-col items-center gap-3 p-6 text-center">
+        <p className="text-sm text-muted-foreground">{t('pdfError')}</p>
+        <a href={url} download={fileName}>
+          {t('downloadFallback')}
+        </a>
+      </div>
+    </object>
+  );
 }

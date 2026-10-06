@@ -44,15 +44,21 @@ export class StorageService implements OnModuleInit {
   }
 
   async getObjectStream(key: string, range?: ObjectRange): Promise<Readable> {
-    const opts =
-      range === undefined
-        ? {}
-        : { offset: range.start, length: range.end === undefined ? undefined : range.end - range.start + 1 };
+    // Full fetches use getObject. getPartialObject with an undefined length
+    // behaves inconsistently across S3-compatible backends (MinIO, AWS,
+    // Backblaze B2) and can return a truncated stream. Range requests
+    // (byte ranges) must use getPartialObject with explicit start/end.
+    if (range === undefined) {
+      return (await this.client.getObject(this.bucket, key)) as unknown as Readable;
+    }
+    if (range.end === undefined) {
+      throw new Error('getObjectStream: range requests require explicit start and end');
+    }
     const stream = (await this.client.getPartialObject(
       this.bucket,
       key,
-      opts.offset ?? 0,
-      opts.length,
+      range.start,
+      range.end - range.start + 1,
     )) as unknown as Readable;
     return stream;
   }

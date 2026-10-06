@@ -118,7 +118,10 @@ class ApiClient {
     if (!res.ok) {
       await this.parseError(res);
     }
-    return res.blob();
+    const raw = await res.blob();
+    // Re-type defensively: some S3/streamed responses arrive without a
+    // Content-Type, and Chrome refuses to render untyped blobs as PDF.
+    return new Blob([raw], { type: 'application/pdf' });
   }
 
 }

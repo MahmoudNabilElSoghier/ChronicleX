@@ -215,6 +215,7 @@ export class EntriesService {
       include: {
         company: { select: { code: true, nameAr: true, nameEn: true } },
         project: { select: { code: true, nameAr: true, nameEn: true } },
+        uploader: { select: { id: true, nameAr: true, nameEn: true } },
       },
     });
     if (!entry) {

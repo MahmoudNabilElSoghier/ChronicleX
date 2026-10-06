@@ -89,6 +89,7 @@
     },
     "downloadFailed": "Could not download the file",
     "pdfError": "Could not display the file",
+    "showFile": "Show file",
     "fileDeleted": "File deleted",
     "fileDeletedHint": "Restore the entry to view the file again",
     "downloadFallback": "Download the file instead",

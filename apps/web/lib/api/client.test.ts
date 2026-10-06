@@ -51,6 +51,19 @@ describe('ApiClient', () => {
     expect(err as ApiError).toMatchObject({ status: 409, code: 'DUPLICATE_SERIAL' });
   });
 
+  it('fetchBlob re-types the blob as application/pdf', async () => {
+    const untitled = new Blob(['%PDF-body'], { type: '' });
+    globalThis.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      blob: () => Promise.resolve(untitled),
+    });
+    const blob = await api.fetchBlob('/entries/e1/file');
+    expect(blob.type).toBe('application/pdf');
+    expect(blob.size).toBeGreaterThan(0);
+  });
+
   it('does NOT set Content-Type for FormData bodies (boundary must survive)', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ jobId: 'j1' }, 202));
     globalThis.fetch = fetchMock;

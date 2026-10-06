@@ -89,6 +89,7 @@
     },
     "downloadFailed": "تعذر تنزيل الملف",
     "pdfError": "تعذر عرض الملف",
+    "showFile": "عرض الملف",
     "fileDeleted": "الملف محذوف",
     "fileDeletedHint": "استرجع القيد لعرض الملف مرة أخرى",
     "downloadFallback": "تنزيل الملف بدلاً من ذلك",

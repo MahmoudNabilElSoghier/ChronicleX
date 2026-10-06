@@ -90,12 +90,20 @@ describe('EntryDetailPage', () => {
     globalThis.URL.revokeObjectURL = vi.fn();
   });
 
-  it('loading → loaded with iframe on a blob URL', async () => {
+  it('preview card shows file info without fetching; Show file renders the object', async () => {
     renderDetail();
-    await waitFor(() => expect(screen.getByTitle('6200000000.pdf')).toBeInTheDocument());
-    const iframe = screen.getByTitle('6200000000.pdf') as HTMLIFrameElement;
-    expect(iframe.src).toBe('blob:fake');
-    expect(iframe.tagName).toBe('IFRAME');
+    await waitFor(() => expect(screen.getAllByText('6200000000.pdf').length).toBeGreaterThan(0));
+    expect(downloadMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /عرض الملف/ }));
+    await waitFor(() => expect(downloadMock).toHaveBeenCalledWith('e1'));
+    const obj = document.querySelector('object') as HTMLObjectElement;
+    expect(obj.data).toBe('blob:fake');
+    expect(obj.type).toBe('application/pdf');
+  });
+
+  it('renders the uploader name from the response', async () => {
+    renderDetail();
+    await waitFor(() => expect(screen.getAllByText('مدير').length).toBeGreaterThan(0));
   });
 
   it('delete confirmation dialog calls entriesApi.remove', async () => {

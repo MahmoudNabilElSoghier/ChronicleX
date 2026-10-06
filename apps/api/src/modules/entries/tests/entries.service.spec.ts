@@ -312,6 +312,18 @@ describe('EntriesService', () => {
     );
   });
 
+  it('findOne includes the uploader identity', async () => {
+    prisma.entry.findFirst.mockResolvedValue({ id: 'e1' });
+    await svc.findOne('e1');
+    expect(prisma.entry.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          uploader: { select: { id: true, nameAr: true, nameEn: true } },
+        }),
+      }),
+    );
+  });
+
   it('getAudit returns history sorted desc, limit 50, with actor names', async () => {
     prisma.auditLog.findMany.mockResolvedValue([
       {
