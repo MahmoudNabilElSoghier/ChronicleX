@@ -106,6 +106,12 @@ describe('EntryDetailPage', () => {
     await waitFor(() => expect(screen.getAllByText('مدير').length).toBeGreaterThan(0));
   });
 
+  it('missing company name renders the warning fallback', async () => {
+    getMock.mockResolvedValue({ ...detail, company: null } as unknown as EntryDetail);
+    renderDetail();
+    await waitFor(() => expect(screen.getByText(/بيانات ناقصة/)).toBeInTheDocument());
+  });
+
   it('delete confirmation dialog calls entriesApi.remove', async () => {
     const user = userEvent.setup();
     removeMock.mockResolvedValue(undefined);

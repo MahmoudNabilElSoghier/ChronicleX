@@ -73,6 +73,10 @@ describe('EntriesTable resilience', () => {
 
   it('shows — instead of crashing when company is missing', () => {
     renderTable([item({ company: undefined as never, project: undefined as never })]);
-    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
+    const dashes = screen.getAllByText('—');
+    expect(dashes.length).toBeGreaterThanOrEqual(2);
+    for (const d of dashes) {
+      expect(d.closest('span')).toHaveAttribute('title');
+    }
   });
 });

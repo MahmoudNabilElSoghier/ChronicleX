@@ -46,7 +46,8 @@
     "cancel": "Cancel",
     "save": "Save",
     "delete": "Delete",
-    "confirm": "Confirm"
+    "confirm": "Confirm",
+    "missingName": "Name unavailable"
   },
   "entries": {
     "list": {

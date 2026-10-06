@@ -25,13 +25,13 @@ export function ExistingEntryCard({ entryId }: { entryId: string }): JSX.Element
         <dt className="text-muted-foreground">{t('conflicts.serial')}</dt>
         <dd className="font-mono" dir="ltr">{entry.serial}</dd>
         <dt className="text-muted-foreground">{t('conflicts.company')}</dt>
-        <dd>{entry.company.nameAr}</dd>
+        <dd>{entry.company?.nameAr ?? '—'}</dd>
         <dt className="text-muted-foreground">{t('conflicts.project')}</dt>
-        <dd>{entry.project.nameAr}</dd>
+        <dd>{entry.project?.nameAr ?? '—'}</dd>
         <dt className="text-muted-foreground">{t('conflicts.year')}</dt>
         <dd dir="ltr">{entry.year}</dd>
         <dt className="text-muted-foreground">{t('conflicts.uploadedBy')}</dt>
-        <dd>{entry.uploadedBy.nameAr}</dd>
+        <dd>{entry.uploadedBy?.nameAr ?? '—'}</dd>
       </dl>
       <Link href={`/entries/${entry.id}`}>
         <Button>{t('conflicts.viewExisting')}</Button>

@@ -20,6 +20,16 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import type { EntryListItem } from '@/lib/api/entries';
 import { formatBytes, formatDateTime } from '@/lib/format';
+import { useLocalizedName, type Bilingual } from '@/lib/use-localized-name';
+
+function NameCell({ entity }: { entity: Bilingual | null | undefined }): JSX.Element {
+  const t = useTranslations('common');
+  const localize = useLocalizedName();
+  const resolved = localize(entity);
+  return (
+    <span title={resolved.isMissing ? t('missingName') : undefined}>{resolved.text}</span>
+  );
+}
 
 export interface RowActions {
   onView: (entry: EntryListItem) => void;
@@ -55,12 +65,12 @@ export function EntriesTable({
       {
         accessorKey: 'company',
         header: () => t('columns.company'),
-        cell: ({ row }) => row.original.company?.nameAr ?? '—',
+        cell: ({ row }) => <NameCell entity={row.original.company} />,
       },
       {
         accessorKey: 'project',
         header: () => t('columns.project'),
-        cell: ({ row }) => row.original.project?.nameAr ?? '—',
+        cell: ({ row }) => <NameCell entity={row.original.project} />,
       },
       {
         accessorKey: 'year',

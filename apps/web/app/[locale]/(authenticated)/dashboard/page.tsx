@@ -124,7 +124,7 @@ export default function DashboardPage(): JSX.Element {
                       </span>
                       <span className="truncate text-muted-foreground">{r.fileName}</span>
                       <span className="hidden text-muted-foreground md:inline">
-                        {r.project.nameAr} · {r.company.nameAr}
+                        {r.project?.nameAr ?? '—'} · {r.company?.nameAr ?? '—'}
                       </span>
                     </li>
                   ))}

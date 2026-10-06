@@ -27,6 +27,7 @@ import { useAuth } from '@/lib/auth/auth-context';
 import { saveBlob } from '@/lib/download';
 import { formatBytes, formatDateTime } from '@/lib/format';
 import { canDeleteEntries, canRestoreEntries } from '@/lib/permissions';
+import { useLocalizedName, type Bilingual, type NameFallback } from '@/lib/use-localized-name';
 
 function Field({ label, value, locked }: { label: string; value: string; locked?: boolean }): JSX.Element {
   return (
@@ -37,6 +38,31 @@ function Field({ label, value, locked }: { label: string; value: string; locked?
       </p>
       <p className="text-sm font-medium" dir="auto">
         {value}
+      </p>
+    </div>
+  );
+}
+
+function DetailName({
+  label,
+  entity,
+  code,
+  fallback,
+}: {
+  label: string;
+  entity: (Bilingual & { code?: number | string }) | null | undefined;
+  code: number | string | null;
+  fallback: NameFallback;
+}): JSX.Element {
+  const localize = useLocalizedName();
+  const resolved = localize(entity ?? null, { fallback });
+  const codeText = code !== null && !resolved.isMissing ? ` (${String(code)})` : '';
+  return (
+    <div className="space-y-1">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-sm font-medium" dir="auto">
+        {resolved.text}
+        {codeText}
       </p>
     </div>
   );
@@ -214,9 +240,9 @@ export default function EntryDetailPage(): JSX.Element {
                     value={`${entry.fileHash.slice(0, 16)}…`}
                     locked
                   />
-                  <Field label={t('detail.company')} value={`${entry.company.nameAr} (${entry.company.code})`} />
-                  <Field label={t('detail.project')} value={`${entry.project.nameAr} (${entry.project.code})`} />
-                  <Field label={t('detail.uploadedBy')} value={entry.uploadedBy.nameAr} />
+                  <DetailName label={t('detail.company')} entity={entry.company} code={entry.company?.code ?? null} fallback="warning" />
+                  <DetailName label={t('detail.project')} entity={entry.project} code={entry.project?.code ?? null} fallback="warning" />
+                  <DetailName label={t('detail.uploadedBy')} entity={entry.uploadedBy} code={null} fallback="empty" />
                   <Field label={t('detail.createdAt')} value={formatDateTime(entry.createdAt, locale)} />
                 </CardContent>
               </Card>
