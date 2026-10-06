@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter } from '@/lib/navigation';
 import * as React from 'react';
 import type { CurrentUser } from '@chroniclex/shared';
 import { api } from '@/lib/api/client';

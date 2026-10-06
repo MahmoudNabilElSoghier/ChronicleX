@@ -53,6 +53,10 @@ class EnvironmentVariables {
   @IsString()
   COOKIE_DOMAIN = 'localhost';
 
+  @IsOptional()
+  @IsString()
+  CORS_ORIGINS?: string;
+
   @IsString()
   @IsNotEmpty()
   MINIO_ENDPOINT!: string;

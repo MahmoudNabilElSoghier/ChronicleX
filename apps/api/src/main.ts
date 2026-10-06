@@ -11,6 +11,20 @@ async function bootstrap(): Promise<void> {
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
   app.enableShutdownHooks();
+  // CORS must allow credentials (refresh cookie). Browsers reject
+  // `origin: '*'` when credentials are set — always list exact origins.
+  const corsOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:3000')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  app.enableCors({
+    origin: corsOrigins,
+    credentials: true,
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    exposedHeaders: ['Content-Length', 'Content-Range', 'Accept-Ranges'],
+    maxAge: 86400,
+  });
   const port = Number(process.env.API_PORT ?? 3001);
   await app.listen(port);
 }

@@ -78,4 +78,11 @@ describe('AuthGuard', () => {
     );
     expect(tokens.verify).not.toHaveBeenCalled();
   });
+
+  it('OPTIONS preflight bypasses auth without touching the token', async () => {
+    await expect(
+      guard.canActivate(ctxWith({ method: 'OPTIONS', headers: {} })),
+    ).resolves.toBe(true);
+    expect(tokens.verify).not.toHaveBeenCalled();
+  });
 });

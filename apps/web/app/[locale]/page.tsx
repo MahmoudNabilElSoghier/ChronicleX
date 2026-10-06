@@ -1,9 +1,9 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/lib/auth/auth-context';
+import { useRouter } from '@/lib/navigation';
 
 export default function IndexPage(): JSX.Element {
   const router = useRouter();

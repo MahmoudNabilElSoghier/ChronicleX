@@ -14,6 +14,11 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
+vi.mock('@/lib/navigation', () => ({
+  useRouter: () => ({ push, replace }),
+  usePathname: () => '/ar/login',
+}));
+
 vi.mock('@/lib/api/endpoints', async (importOriginal) => {
   const mod = await importOriginal<typeof import('@/lib/api/endpoints')>();
   return {

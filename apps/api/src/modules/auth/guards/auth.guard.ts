@@ -22,15 +22,21 @@ export class AuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const req = context.switchToHttp().getRequest() as {
+      method?: string;
+      headers: Record<string, unknown>;
+      user?: AuthenticatedUser;
+    };
+    // Belt-and-braces: CORS middleware answers OPTIONS before guards run,
+    // but a preflight must never fail closed here if it ever arrives.
+    if (req.method === 'OPTIONS') {
+      return true;
+    }
     const handler = context.getHandler();
     const classRef = context.getClass();
     if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC, [handler, classRef])) {
       return true;
     }
-    const req = context.switchToHttp().getRequest() as {
-      headers: Record<string, unknown>;
-      user?: AuthenticatedUser;
-    };
     let payload: AccessPayload;
     try {
       payload = this.tokens.verify<AccessPayload>(bearerToken(req.headers.authorization));
