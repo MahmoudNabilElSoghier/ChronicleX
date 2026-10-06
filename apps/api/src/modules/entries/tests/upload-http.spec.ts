@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { APP_GUARD, Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
@@ -49,6 +50,7 @@ describe('POST /entries multipart (http)', () => {
         ScopeResolver,
         Reflector,
         { provide: APP_GUARD, useClass: AuthGuard },
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue(undefined) } },
         { provide: TokenService, useValue: tokens },
         { provide: PrismaService, useValue: prisma },
         { provide: StorageService, useValue: storage },

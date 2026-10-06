@@ -8,19 +8,20 @@ import { LocaleToggle } from './locale-toggle';
 import { ThemeToggle } from './theme-toggle';
 import { UserMenu } from './user-menu';
 
+/**
+ * Only segments with a nav translation become crumbs. Dynamic IDs (cuids),
+ * action segments (roles, bulk-upload) and anything else are dropped —
+ * translating them throws IntlError, and raw IDs add no navigation value.
+ */
+const NAV_KEYS = new Set(['dashboard', 'entries', 'upload', 'users', 'audit', 'admin', 'profile']);
+
 export function Topbar(): JSX.Element {
   const t = useTranslations('nav');
   const pathname = usePathname();
   const crumbs = React.useMemo(() => {
     const segments = pathname.replace(/^\/(ar|en)/, '').split('/').filter(Boolean);
     const translate = t as unknown as (key: string) => string;
-    return segments.map((s) => {
-      try {
-        return translate(s);
-      } catch {
-        return s;
-      }
-    });
+    return segments.filter((s) => NAV_KEYS.has(s)).map((s) => translate(s));
   }, [pathname, t]);
 
   return (

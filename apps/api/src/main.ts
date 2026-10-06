@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import { parseCorsOrigins } from './common/cors-headers';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
@@ -13,10 +14,7 @@ async function bootstrap(): Promise<void> {
   app.enableShutdownHooks();
   // CORS must allow credentials (refresh cookie). Browsers reject
   // `origin: '*'` when credentials are set — always list exact origins.
-  const corsOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:3000')
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
+  const corsOrigins = parseCorsOrigins(process.env.CORS_ORIGINS);
   app.enableCors({
     origin: corsOrigins,
     credentials: true,

@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
@@ -48,6 +49,7 @@ describe('upload → audit row (in-memory, no Docker)', () => {
         Reflector,
         { provide: APP_GUARD, useClass: AuthGuard },
         { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue(undefined) } },
         { provide: TokenService, useValue: tokens },
         { provide: PrismaService, useValue: prisma },
         { provide: StorageService, useValue: storage },

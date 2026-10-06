@@ -19,9 +19,11 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
 import { Action, Resource } from '../../generated/prisma/client';
+import { applyCorsHeaders, parseCorsOrigins } from '../../common/cors-headers';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
 import type { AuthenticatedUser } from '../auth/types';
@@ -53,8 +55,14 @@ function parseRange(header: string | undefined, size: number): RangeRequest {
 @Controller('entries')
 @UseGuards(PermissionsGuard)
 export class EntriesController {
-  constructor(private readonly entries: EntriesService) {}
+  constructor(
+    private readonly entries: EntriesService,
+    private readonly config: ConfigService,
+  ) {}
 
+  private corsOrigins(): string[] {
+    return parseCorsOrigins(this.config.get<string>('CORS_ORIGINS'));
+  }
   @Post()
   @HttpCode(HttpStatus.CREATED)
   // No scopeHint: multipart bodies aren't parsed when guards run.
@@ -125,6 +133,9 @@ export class EntriesController {
   ): Promise<void> {
     const target = await this.entries.getStreamTarget(id);
     const range = parseRange(req.headers.range, target.fileSize);
+    // Explicit CORS: this handler pipes a raw stream past Nest's pipeline,
+    // so it sets the same headers the global middleware would (Option B).
+    applyCorsHeaders(req, res, this.corsOrigins());
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${target.serial}.pdf"`);
     res.setHeader('Accept-Ranges', 'bytes');

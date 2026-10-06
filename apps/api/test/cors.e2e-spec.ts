@@ -54,4 +54,27 @@ describe('CORS (e2e, needs Docker)', () => {
       .send({ email: 'nobody@tmg.local', password: 'WrongPass1' })
       .expect(401);
   });
+
+  it('file preflight returns CORS headers', async () => {
+    const res = await request(app.getHttpServer())
+      .options('/entries/some-id/file')
+      .set('Origin', 'http://localhost:3000')
+      .set('Access-Control-Request-Method', 'GET')
+      .set('Access-Control-Request-Headers', 'authorization')
+      .expect(204);
+    expect(res.headers['access-control-allow-origin']).toBe('http://localhost:3000');
+    expect(res.headers['access-control-allow-credentials']).toBe('true');
+  });
+
+  it('file GET carries CORS headers plus inline disposition (or a guarded 401/404)', async () => {
+    // No seed entries exist here; the point is the HEADERS on whatever the
+    // handler returns. With a bad token the guard rejects before streaming.
+    const res = await request(app.getHttpServer())
+      .get('/entries/some-id/file')
+      .set('Origin', 'http://localhost:3000')
+      .set('Authorization', 'Bearer invalid.token.here');
+    expect(res.headers['access-control-allow-origin']).toBe('http://localhost:3000');
+    expect(res.headers['access-control-allow-credentials']).toBe('true');
+    expect([401, 404]).toContain(res.status);
+  });
 });
