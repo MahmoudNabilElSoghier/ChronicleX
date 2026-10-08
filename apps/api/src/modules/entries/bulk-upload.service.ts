@@ -13,6 +13,7 @@ import { ScopeMatcher } from '../rbac/scope-matcher';
 import { StorageService } from '../storage/storage.service';
 import { RedisService } from '../../redis/redis.service';
 import { parseSerialFromFilename } from './serial.utils';
+import { fetchExistingSummaries, type ExistingEntrySummary } from './existing-summary';
 
 export const BULK_QUEUE = 'bulk-upload';
 export const BULK_TTL_SECONDS = 24 * 3600;
@@ -68,6 +69,7 @@ export interface PreviewResult {
   index: number;
   status: 'ok' | 'duplicate_serial' | 'duplicate_hash' | 'invalid_filename';
   existingEntryId?: string;
+  existing?: ExistingEntrySummary;
   reason?: string;
 }
 
@@ -221,9 +223,11 @@ export class BulkUploadService {
 
   /**
    * Pre-flight conflict check: what WOULD happen if these files were
-   * uploaded into (companyId, year)? Two batched queries for N files.
-   * Serial conflicts are scope-bound (company+year); hash conflicts are
-   * global (the file content is unique regardless of scope).
+   * uploaded into (companyId, year)? Two batched queries for N files,
+   * plus one enrichment query when duplicates exist (the original
+   * entry's summary). Serial conflicts are scope-bound (company+year);
+   * hash conflicts are global (the file content is unique regardless of
+   * scope).
    */
   async preview(
     input: PreviewInput,
@@ -279,6 +283,11 @@ export class BulkUploadService {
         : [];
     const hashToId = new Map(dupHashes.map((e) => [e.fileHash, e.id]));
 
+    // One extra batched query enriches every duplicate row with the
+    // original entry's summary (serial, year, company, project, uploader).
+    const duplicateIds = [...new Set([...serialToId.values(), ...hashToId.values()])];
+    const existingById = await fetchExistingSummaries(this.prisma, duplicateIds);
+
     const results: PreviewResult[] = input.fileNames.map((_, index) => {
       const p = parsed[index];
       if (!p || 'error' in p) {
@@ -290,12 +299,24 @@ export class BulkUploadService {
       }
       const existingSerialId = serialToId.get(p.serial);
       if (existingSerialId) {
-        return { index, status: 'duplicate_serial', existingEntryId: existingSerialId };
+        const existing = existingById.get(existingSerialId);
+        return {
+          index,
+          status: 'duplicate_serial',
+          existingEntryId: existingSerialId,
+          ...(existing ? { existing } : {}),
+        };
       }
       const hash = input.fileHashes?.[index];
       const existingHashId = hash ? hashToId.get(hash) : undefined;
       if (existingHashId) {
-        return { index, status: 'duplicate_hash', existingEntryId: existingHashId };
+        const existing = existingById.get(existingHashId);
+        return {
+          index,
+          status: 'duplicate_hash',
+          existingEntryId: existingHashId,
+          ...(existing ? { existing } : {}),
+        };
       }
       return { index, status: 'ok' };
     });

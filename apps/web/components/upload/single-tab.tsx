@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dropzone } from '@/components/upload/dropzone';
+import { DuplicateDetails } from '@/components/upload/duplicate-details';
 import { ExistingEntryCard } from '@/components/upload/existing-entry-card';
 import { ScopeSelectors } from '@/components/upload/scope-selectors';
 import { formatBytes } from '@/lib/format';
@@ -104,14 +105,18 @@ export function SingleTab(): JSX.Element {
             {item.status === 'failed' ? (
               (item.errorCode === 'DUPLICATE_SERIAL' || item.errorCode === 'DUPLICATE_FILE') &&
               item.existingEntryId ? (
-                <div className="space-y-3 rounded-md border p-3">
-                  <p className="text-sm font-medium text-destructive">
-                    {item.errorCode === 'DUPLICATE_SERIAL'
-                      ? t('conflicts.duplicateSerial')
-                      : t('conflicts.duplicateFile')}
-                  </p>
-                  <ExistingEntryCard entryId={item.existingEntryId} />
-                </div>
+                item.existing ? (
+                  <DuplicateDetails existing={item.existing} entryId={item.existingEntryId} />
+                ) : (
+                  <div className="space-y-3 rounded-md border p-3">
+                    <p className="text-sm font-medium text-destructive">
+                      {item.errorCode === 'DUPLICATE_SERIAL'
+                        ? t('conflicts.duplicateSerial')
+                        : t('conflicts.duplicateFile')}
+                    </p>
+                    <ExistingEntryCard entryId={item.existingEntryId} />
+                  </div>
+                )
               ) : (
                 <p className="text-sm text-destructive">{item.errorMessage ?? item.errorCode}</p>
               )

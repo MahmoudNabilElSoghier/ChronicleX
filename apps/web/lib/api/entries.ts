@@ -35,10 +35,21 @@ export interface BulkStatus {
 
 export type PreviewStatus = 'ok' | 'duplicate_serial' | 'duplicate_hash' | 'invalid_filename';
 
+/** Summary of an already-archived entry, attached to duplicate responses. */
+export interface ExistingEntrySummary {
+  serial: string;
+  year: number;
+  company: { nameAr: string; nameEn: string; code: number };
+  project: { nameAr: string; nameEn: string; code: string };
+  uploadedBy: { nameAr: string; nameEn: string };
+  createdAt: string;
+}
+
 export interface PreviewResult {
   index: number;
   status: PreviewStatus;
   existingEntryId?: string;
+  existing?: ExistingEntrySummary;
   reason?: string;
 }
 

@@ -2,7 +2,12 @@
 
 import * as React from 'react';
 import { ApiError } from '@/lib/api/client';
-import { uploadApi, type BulkStatus, type PreviewResult } from '@/lib/api/entries';
+import {
+  uploadApi,
+  type BulkStatus,
+  type ExistingEntrySummary,
+  type PreviewResult,
+} from '@/lib/api/entries';
 import { useBulkUploadStatus } from '@/lib/upload/use-bulk-status';
 import { parseFilename, type ParseErrorCode, type ParseResult } from '@/lib/upload/filename-parser';
 
@@ -32,7 +37,11 @@ export interface UploadItem {
   check: CheckState;
   checkReason?: CheckReason | undefined;
   entryId?: string;
-  existingEntryId?: string;
+  existingEntryId?: string | undefined;
+  /** enriched summary of the conflicting entry (preview/409) */
+  existing?: ExistingEntrySummary | undefined;
+  /** SHA-256 computed during preview — shown (8 chars) for duplicate_hash */
+  fileHash?: string | undefined;
   errorCode?: string;
   errorMessage?: string;
   serial?: string;
@@ -231,13 +240,24 @@ export function useUploadQueue(scope?: QueueScope): {
             const r: PreviewResult | undefined = idx >= 0 ? results[idx] : undefined;
             if (!r || !item.parse.ok) return item;
             if (r.status === 'ok') {
-              return { ...item, check: 'valid' as const, checkReason: undefined };
+              return {
+                ...item,
+                check: 'valid' as const,
+                checkReason: undefined,
+                existingEntryId: undefined,
+                existing: undefined,
+              };
             }
+            const snapHash = fileHashes && idx >= 0 ? fileHashes[idx] : undefined;
             return {
               ...item,
               check: 'invalid' as const,
               checkReason: r.status,
               ...(r.existingEntryId ? { existingEntryId: r.existingEntryId } : {}),
+              ...(r.existing ? { existing: r.existing } : {}),
+              ...(r.status === 'duplicate_hash' && typeof snapHash === 'string'
+                ? { fileHash: snapHash }
+                : {}),
             };
           }),
         );
@@ -371,7 +391,9 @@ export function useUploadQueue(scope?: QueueScope): {
             patch(item.id, { status: 'done', progress: 100, entryId: res.id });
           } catch (err) {
             const apiErr = err as ApiError;
-            const details = apiErr.details as { existingEntryId?: string } | undefined;
+            const details = apiErr.details as
+              | { existingEntryId?: string; existing?: ExistingEntrySummary }
+              | undefined;
             patch(item.id, {
               status: 'failed',
               errorCode: apiErr.code ?? 'UNKNOWN',
@@ -379,6 +401,7 @@ export function useUploadQueue(scope?: QueueScope): {
               ...(typeof details?.existingEntryId === 'string'
                 ? { existingEntryId: details.existingEntryId }
                 : {}),
+              ...(details?.existing ? { existing: details.existing } : {}),
             });
             throw err;
           }

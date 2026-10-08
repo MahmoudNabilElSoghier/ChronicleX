@@ -14,6 +14,7 @@ import { StorageService } from '../storage/storage.service';
 import type { ListEntriesDto } from './dto/list-entries.dto';
 import type { UpdateEntryDto } from './dto/update-entry.dto';
 import type { UploadEntryDto } from './dto/upload-entry.dto';
+import { fetchExistingSummary } from './existing-summary';
 import { parseSerialFromFilename, validatePdfMagicBytes } from './serial.utils';
 
 export interface Actor {
@@ -116,10 +117,12 @@ export class EntriesService {
       select: { id: true },
     });
     if (dupe) {
+      const existing = await fetchExistingSummary(this.prisma, dupe.id);
       throw new ConflictException({
         code: 'DUPLICATE_SERIAL',
         message: 'Serial already exists for this company and year',
         existingEntryId: dupe.id,
+        ...(existing ? { existing } : {}),
       });
     }
     const dupeFile = await this.prisma.entry.findFirst({
@@ -127,10 +130,12 @@ export class EntriesService {
       select: { id: true },
     });
     if (dupeFile) {
+      const existing = await fetchExistingSummary(this.prisma, dupeFile.id);
       throw new ConflictException({
         code: 'DUPLICATE_FILE',
         message: 'Identical file already archived',
         existingEntryId: dupeFile.id,
+        ...(existing ? { existing } : {}),
       });
     }
 

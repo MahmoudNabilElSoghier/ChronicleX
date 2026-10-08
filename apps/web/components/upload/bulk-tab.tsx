@@ -6,6 +6,7 @@ import { CheckCircle2, Clock, Info, Loader2, RotateCcw, Trash2, XCircle } from '
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dropzone } from '@/components/upload/dropzone';
+import { DuplicateDetails } from '@/components/upload/duplicate-details';
 import { ScopeSelectors } from '@/components/upload/scope-selectors';
 import { type BulkResult } from '@/lib/api/entries';
 import { formatBytes } from '@/lib/format';
@@ -128,62 +129,78 @@ export function BulkTab(): JSX.Element {
                   <p className="text-xs text-muted-foreground">{t('bulk.deferredNote')}</p>
                 ) : null}
                 <ul className="divide-y">
-                  {queue.items.map((item) => (
-                    <li key={item.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-                      <span className="min-w-0">
-                        <span className="block truncate font-mono" dir="ltr">
-                          {item.name}
+                  {queue.items.map((item) => {
+                    // enriched block replaces the plain reason + link when
+                    // the preview carried the original entry's summary
+                    const enriched =
+                      item.check === 'invalid' &&
+                      item.existing !== undefined &&
+                      item.existingEntryId !== undefined;
+                    return (
+                      <li key={item.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                        <div className="min-w-0">
+                          <span className="block truncate font-mono" dir="ltr">
+                            {item.name}
+                          </span>
+                          <span className="text-xs text-muted-foreground" dir="ltr">
+                            {formatBytes(item.size)}
+                          </span>
+                          {item.check === 'invalid' &&
+                          item.existing !== undefined &&
+                          item.existingEntryId !== undefined ? (
+                            <DuplicateDetails
+                              existing={item.existing}
+                              entryId={item.existingEntryId}
+                              fileHash={item.fileHash}
+                            />
+                          ) : item.check === 'invalid' && item.existingEntryId ? (
+                            <a
+                              href={`/${locale}/entries/${item.existingEntryId}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block text-xs text-muted-foreground underline hover:text-foreground"
+                            >
+                              {t('conflicts.viewExisting')}
+                            </a>
+                          ) : null}
+                        </div>
+                        <span className="flex shrink-0 items-center gap-2">
+                          {item.check === 'valid' ? (
+                            <span className="flex items-center gap-1 text-xs text-green-700">
+                              <CheckCircle2 className="h-4 w-4" />
+                              {t('bulk.valid')}
+                            </span>
+                          ) : item.check === 'pending_check' ? (
+                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              {t('bulk.checking')}
+                            </span>
+                          ) : item.check === 'pending_scope' ? (
+                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Clock className="h-4 w-4" />
+                              {t('bulk.pendingScope')}
+                            </span>
+                          ) : item.check === 'deferred' ? (
+                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Clock className="h-4 w-4" />
+                              {t('bulk.deferred')}
+                            </span>
+                          ) : enriched ? null : (
+                            <span
+                              className="flex items-center gap-1 text-xs text-destructive"
+                              title={checkReasonText(item)}
+                            >
+                              <XCircle className="h-4 w-4" />
+                              {checkReasonText(item)}
+                            </span>
+                          )}
+                          <Button variant="ghost" size="sm" onClick={() => queue.removeItem(item.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </span>
-                        <span className="text-xs text-muted-foreground" dir="ltr">
-                          {formatBytes(item.size)}
-                        </span>
-                        {item.check === 'invalid' && item.existingEntryId ? (
-                          <a
-                            href={`/${locale}/entries/${item.existingEntryId}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block text-xs text-muted-foreground underline hover:text-foreground"
-                          >
-                            {t('conflicts.viewExisting')}
-                          </a>
-                        ) : null}
-                      </span>
-                      <span className="flex shrink-0 items-center gap-2">
-                        {item.check === 'valid' ? (
-                          <span className="flex items-center gap-1 text-xs text-green-700">
-                            <CheckCircle2 className="h-4 w-4" />
-                            {t('bulk.valid')}
-                          </span>
-                        ) : item.check === 'pending_check' ? (
-                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            {t('bulk.checking')}
-                          </span>
-                        ) : item.check === 'pending_scope' ? (
-                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <Clock className="h-4 w-4" />
-                            {t('bulk.pendingScope')}
-                          </span>
-                        ) : item.check === 'deferred' ? (
-                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <Clock className="h-4 w-4" />
-                            {t('bulk.deferred')}
-                          </span>
-                        ) : (
-                          <span
-                            className="flex items-center gap-1 text-xs text-destructive"
-                            title={checkReasonText(item)}
-                          >
-                            <XCircle className="h-4 w-4" />
-                            {checkReasonText(item)}
-                          </span>
-                        )}
-                        <Button variant="ghost" size="sm" onClick={() => queue.removeItem(item.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </span>
-                    </li>
-                  ))}
+                      </li>
+                    );
+                  })}
                 </ul>
                 <ScopeSelectors value={scope} onChange={setScope} disabled={queue.isSubmitting} />
                 <div className="flex gap-2">

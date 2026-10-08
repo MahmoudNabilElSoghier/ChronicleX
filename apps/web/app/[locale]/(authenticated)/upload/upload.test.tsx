@@ -305,5 +305,50 @@ describe('UploadPage bulk tab', () => {
     // pending portion hidden at zero, rows agree with the counts
     expect(screen.queryByText(/بانتظار التحقق/)).not.toBeInTheDocument();
     expect(screen.getAllByText('هذا الملف مرفوع بالفعل')).toHaveLength(2);
+    // legacy path: no enriched summary in the response → no details block
+    expect(screen.queryByText('الملف مرفوع قبل كده')).not.toBeInTheDocument();
+  });
+
+  it('duplicate row shows original entry details and opens the link in a new tab', async () => {
+    const { uploadApi: api } = await import('@/lib/api/entries');
+    vi.mocked(api.preview).mockResolvedValue({
+      results: [
+        {
+          index: 0,
+          status: 'duplicate_serial',
+          existingEntryId: 'e9',
+          existing: {
+            serial: '6200000000',
+            year: 2025,
+            company: { nameAr: 'شركة الاسكندرية', nameEn: 'Alexandria', code: 9205 },
+            project: { nameAr: 'سان ستيفانو العقارية', nameEn: 'San Stefano', code: 'SSRE' },
+            uploadedBy: { nameAr: 'مدير النظام', nameEn: 'System Administrator' },
+            createdAt: '2025-03-01T10:00:00.000Z',
+          },
+        },
+      ],
+    });
+    renderUpload();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('tab', { name: /رفع متعدد/ }));
+    await waitFor(() =>
+      expect(document.querySelectorAll('input[type="file"]')).toHaveLength(1),
+    );
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [pdf('6200000000.pdf')] } });
+    await fillScope();
+
+    await waitFor(() => expect(screen.getByText('الملف مرفوع قبل كده')).toBeInTheDocument(), {
+      timeout: 3000,
+    });
+    expect(screen.getByText(/القيد الأصلي: 6200000000/)).toBeInTheDocument();
+    expect(screen.getByText(/الشركة: شركة الاسكندرية/)).toBeInTheDocument();
+    expect(screen.getByText(/المشروع: سان ستيفانو العقارية/)).toBeInTheDocument();
+    expect(screen.getByText(/مرفوع بواسطة: مدير النظام/)).toBeInTheDocument();
+    // the plain reason badge is replaced by the details block
+    expect(screen.queryByText('الرقم التسلسلي مستخدم بالفعل')).not.toBeInTheDocument();
+    const link = screen.getByRole('link', { name: 'عرض القيد الأصلي' });
+    expect(link).toHaveAttribute('href', '/ar/entries/e9');
+    expect(link).toHaveAttribute('target', '_blank');
   });
 });

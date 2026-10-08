@@ -107,8 +107,20 @@ describe('BulkUploadService', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('preview: 3 serials, 1 duplicate → one result flagged duplicate_serial', async () => {
-    prisma.entry.findMany.mockResolvedValueOnce([{ id: 'e-old', serial: '6200000001' }]);
+  it('preview duplicate_serial enrichment → row carries the original entry summary', async () => {
+    prisma.entry.findMany
+      .mockResolvedValueOnce([{ id: 'e-old', serial: '6200000001' }])
+      .mockResolvedValueOnce([
+        {
+          id: 'e-old',
+          serial: '6200000001',
+          year: 2025,
+          company: { nameAr: 'شركة الاسكندرية', nameEn: 'Alexandria', code: 9205 },
+          project: { nameAr: 'سان ستيفانو العقارية', nameEn: 'San Stefano', code: 'SSRE' },
+          uploader: { nameAr: 'مدير النظام', nameEn: 'System Administrator' },
+          createdAt: new Date('2025-03-01T10:00:00.000Z'),
+        },
+      ]);
     const res = await svc.preview(
       {
         companyId: 'c1',
@@ -120,12 +132,25 @@ describe('BulkUploadService', () => {
     );
     expect(res.results).toEqual([
       { index: 0, status: 'ok' },
-      { index: 1, status: 'duplicate_serial', existingEntryId: 'e-old' },
+      {
+        index: 1,
+        status: 'duplicate_serial',
+        existingEntryId: 'e-old',
+        existing: {
+          serial: '6200000001',
+          year: 2025,
+          company: { nameAr: 'شركة الاسكندرية', nameEn: 'Alexandria', code: 9205 },
+          project: { nameAr: 'سان ستيفانو العقارية', nameEn: 'San Stefano', code: 'SSRE' },
+          uploadedBy: { nameAr: 'مدير النظام', nameEn: 'System Administrator' },
+          createdAt: '2025-03-01T10:00:00.000Z',
+        },
+      },
       { index: 2, status: 'ok' },
     ]);
-    // One batched serial query; no hash query when fileHashes is omitted.
-    expect(prisma.entry.findMany).toHaveBeenCalledTimes(1);
-    expect(prisma.entry.findMany).toHaveBeenCalledWith(
+    // serial query, then one enrichment query for the duplicate id.
+    expect(prisma.entry.findMany).toHaveBeenCalledTimes(2);
+    expect(prisma.entry.findMany).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
         where: expect.objectContaining({
           companyId: 'c1',
@@ -134,12 +159,34 @@ describe('BulkUploadService', () => {
         }),
       }),
     );
+    expect(prisma.entry.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: { id: { in: ['e-old'] } },
+        select: expect.objectContaining({
+          id: true,
+          serial: true,
+          uploader: { select: { nameAr: true, nameEn: true } },
+        }),
+      }),
+    );
   });
 
-  it('preview: file hash matches an existing entry → duplicate_hash', async () => {
+  it('preview duplicate_hash enrichment → row carries the original entry summary', async () => {
     prisma.entry.findMany
       .mockResolvedValueOnce([]) // serial query: no duplicates
-      .mockResolvedValueOnce([{ id: 'e-same', fileHash: 'abc123' }]);
+      .mockResolvedValueOnce([{ id: 'e-same', fileHash: 'abc123' }])
+      .mockResolvedValueOnce([
+        {
+          id: 'e-same',
+          serial: '6200000000',
+          year: 2024,
+          company: { nameAr: 'الشركة', nameEn: 'Co', code: 2000 },
+          project: { nameAr: 'الرحاب', nameEn: 'Rehab', code: 'REHAB' },
+          uploader: { nameAr: 'مدير النظام', nameEn: 'System Administrator' },
+          createdAt: new Date('2024-11-05T08:30:00.000Z'),
+        },
+      ]);
     const res = await svc.preview(
       {
         companyId: 'c1',
@@ -151,12 +198,31 @@ describe('BulkUploadService', () => {
       ACTOR.userId,
     );
     expect(res.results).toEqual([
-      { index: 0, status: 'duplicate_hash', existingEntryId: 'e-same' },
+      {
+        index: 0,
+        status: 'duplicate_hash',
+        existingEntryId: 'e-same',
+        existing: {
+          serial: '6200000000',
+          year: 2024,
+          company: { nameAr: 'الشركة', nameEn: 'Co', code: 2000 },
+          project: { nameAr: 'الرحاب', nameEn: 'Rehab', code: 'REHAB' },
+          uploadedBy: { nameAr: 'مدير النظام', nameEn: 'System Administrator' },
+          createdAt: '2024-11-05T08:30:00.000Z',
+        },
+      },
     ]);
-    expect(prisma.entry.findMany).toHaveBeenCalledTimes(2);
-    expect(prisma.entry.findMany).toHaveBeenLastCalledWith(
+    expect(prisma.entry.findMany).toHaveBeenCalledTimes(3);
+    expect(prisma.entry.findMany).toHaveBeenNthCalledWith(
+      2,
       expect.objectContaining({
         where: { fileHash: { in: ['abc123'] } },
+      }),
+    );
+    expect(prisma.entry.findMany).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        where: { id: { in: ['e-same'] } },
       }),
     );
   });

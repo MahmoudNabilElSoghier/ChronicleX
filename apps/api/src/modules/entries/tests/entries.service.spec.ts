@@ -86,13 +86,35 @@ describe('EntriesService', () => {
     expect(prisma.auditLog.create).not.toHaveBeenCalled();
   });
 
-  it('upload duplicate serial → 409 DUPLICATE_SERIAL', async () => {
+  it('upload duplicate serial → 409 with the existing entry summary', async () => {
     prisma.project.findUnique.mockResolvedValue(project);
-    prisma.entry.findUnique.mockResolvedValue({ id: 'existing' });
+    prisma.entry.findUnique.mockResolvedValueOnce({ id: 'existing' });
+    prisma.entry.findMany.mockResolvedValueOnce([
+      {
+        id: 'existing',
+        serial: '6200000000',
+        year: 2025,
+        company: { nameAr: 'الشركة', nameEn: 'Co', code: 2000 },
+        project: { nameAr: 'الرحاب', nameEn: 'Rehab', code: 'REHAB' },
+        uploader: { nameAr: 'مدير النظام', nameEn: 'System Administrator' },
+        createdAt: new Date('2025-03-01T10:00:00.000Z'),
+      },
+    ]);
     await expect(
       svc.upload({ companyId: 'c1', projectId: 'p1', year: 2025 }, pdfFile('6200000000.pdf'), ACTOR),
     ).rejects.toMatchObject({
-      response: expect.objectContaining({ code: 'DUPLICATE_SERIAL', existingEntryId: 'existing' }),
+      response: expect.objectContaining({
+        code: 'DUPLICATE_SERIAL',
+        existingEntryId: 'existing',
+        existing: {
+          serial: '6200000000',
+          year: 2025,
+          company: { nameAr: 'الشركة', nameEn: 'Co', code: 2000 },
+          project: { nameAr: 'الرحاب', nameEn: 'Rehab', code: 'REHAB' },
+          uploadedBy: { nameAr: 'مدير النظام', nameEn: 'System Administrator' },
+          createdAt: '2025-03-01T10:00:00.000Z',
+        },
+      }),
     });
     expect(storage.putObject).not.toHaveBeenCalled();
   });
