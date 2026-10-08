@@ -12,7 +12,7 @@ import { DuplicateDetails } from '@/components/upload/duplicate-details';
 import { ExistingEntryCard } from '@/components/upload/existing-entry-card';
 import { ScopeSelectors } from '@/components/upload/scope-selectors';
 import { formatBytes } from '@/lib/format';
-import { useUploadQueue } from '@/lib/upload/use-upload-queue';
+import { useUploadQueue, type QueueScope } from '@/lib/upload/use-upload-queue';
 
 /**
  * Single-entry badge state mirrors the queue's check machine (the same
@@ -27,15 +27,38 @@ type SingleStatus =
   | 'invalid'
   | 'deferred';
 
-export function SingleTab(): JSX.Element {
+export interface SingleTabProps {
+  /** Held by the page so it survives tab switches; null after Remove/reload. */
+  file: File | null;
+  onFileChange: (f: File | null) => void;
+  scope: QueueScope;
+  onScopeChange: (s: QueueScope) => void;
+}
+
+export function SingleTab({
+  file,
+  onFileChange,
+  scope,
+  onScopeChange,
+}: SingleTabProps): JSX.Element {
   const t = useTranslations('upload');
   const router = useRouter();
-  const [scope, setScope] = React.useState({ companyId: '', projectId: '', year: '' });
-  // Scope is passed through so the queue runs the same pre-flight preview
-  // the bulk tab uses (1-element array).
-  const queue = useUploadQueue(scope);
+  // The file seeds the queue on mount (state initializer); the scope is a
+  // controlled value from the page — both survive tab switches.
+  const queue = useUploadQueue(scope, file);
 
-  const item = queue.items[0];
+  const items = queue.items;
+  // Page ← queue: mirror removals (Remove / clear) so a tab switch after
+  // Remove cannot resurrect the file from page state.
+  React.useEffect(() => {
+    if (items.length === 0) {
+      if (file !== null) onFileChange(null);
+    } else if (items[0] && items[0].file !== file) {
+      onFileChange(items[0].file);
+    }
+  }, [items, file, onFileChange]);
+
+  const item = items[0];
   const scopeValid =
     scope.companyId !== '' && scope.projectId !== '' && /^\d{4}$/.test(scope.year);
 
@@ -168,7 +191,7 @@ export function SingleTab(): JSX.Element {
                 {t('bulk.pendingScope')}
               </p>
             )}
-            <ScopeSelectors value={scope} onChange={setScope} disabled={queue.isSubmitting} />
+            <ScopeSelectors value={scope} onChange={onScopeChange} disabled={queue.isSubmitting} />
             {queue.isSubmitting ? (
               <div className="h-2 overflow-hidden rounded bg-muted">
                 <div

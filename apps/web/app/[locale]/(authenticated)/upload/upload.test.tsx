@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { NuqsTestingAdapter } from 'nuqs/adapters/testing';
@@ -237,6 +237,76 @@ describe('UploadPage single tab', () => {
       timeout: 3000,
     });
     expect(screen.getByRole('button', { name: /رفع القيد/ })).toBeEnabled();
+  });
+
+  it('file + scope survive switching to the bulk tab and back', async () => {
+    const { uploadApi: api } = await import('@/lib/api/entries');
+    vi.mocked(api.preview).mockResolvedValue({ results: [{ index: 0, status: 'ok' }] });
+    renderUpload();
+    await chooseFiles([pdf('6200000000.pdf')]);
+    await fillScope();
+    await waitFor(() => expect(screen.getByText('✓ ملف صالح')).toBeInTheDocument(), {
+      timeout: 3000,
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('tab', { name: /رفع متعدد/ }));
+    expect(screen.queryByText('6200000000.pdf')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: /قيد واحد/ }));
+    // file and scope come back from page state, no re-selection needed
+    expect(screen.getByText('6200000000.pdf')).toBeInTheDocument();
+    const selects = screen.getAllByRole('combobox') as HTMLSelectElement[];
+    expect(selects[0]?.value).toBe('c1');
+    expect(selects[1]?.value).toBe('p1');
+    expect(
+      (screen.getByPlaceholderText(String(new Date().getFullYear())) as HTMLInputElement).value,
+    ).toBe('2025');
+    // the check machine re-runs the preview and converges back
+    await waitFor(() => expect(screen.getByText('✓ ملف صالح')).toBeInTheDocument(), {
+      timeout: 3000,
+    });
+    expect(screen.getByRole('button', { name: /رفع القيد/ })).toBeEnabled();
+  });
+
+  it('reload clears the single tab — nothing is persisted to sessionStorage', async () => {
+    const { uploadApi: api } = await import('@/lib/api/entries');
+    vi.mocked(api.preview).mockResolvedValue({ results: [{ index: 0, status: 'ok' }] });
+    renderUpload();
+    await chooseFiles([pdf('6200000000.pdf')]);
+    await fillScope();
+    await waitFor(() => expect(screen.getByText('✓ ملف صالح')).toBeInTheDocument(), {
+      timeout: 3000,
+    });
+
+    // simulate a reload: unmount everything, then mount a fresh page
+    cleanup();
+    expect(sessionStorage.length).toBe(0);
+    renderUpload();
+    expect(screen.queryByText('6200000000.pdf')).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('combobox')).toHaveLength(0);
+  });
+
+  it('Remove clears the file in both the queue and the page state', async () => {
+    const { uploadApi: api } = await import('@/lib/api/entries');
+    vi.mocked(api.preview).mockResolvedValue({ results: [{ index: 0, status: 'ok' }] });
+    renderUpload();
+    await chooseFiles([pdf('6200000000.pdf')]);
+    await fillScope();
+    await waitFor(() => expect(screen.getByText('✓ ملف صالح')).toBeInTheDocument(), {
+      timeout: 3000,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'إزالة' }));
+    await waitFor(() =>
+      expect(screen.queryByText('6200000000.pdf')).not.toBeInTheDocument(),
+    );
+    // if page state still held the file, a tab round-trip would resurrect it
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('tab', { name: /رفع متعدد/ }));
+    await user.click(screen.getByRole('tab', { name: /قيد واحد/ }));
+    expect(screen.queryByText('6200000000.pdf')).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('combobox')).toHaveLength(0);
   });
 });
 

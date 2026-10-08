@@ -143,7 +143,11 @@ function writeLastBatch(value: Record<string, unknown> | null): void {
   }
 }
 
-export function useUploadQueue(scope?: QueueScope): {
+export function useUploadQueue(
+  scope?: QueueScope,
+  /** Seed file for remounts (single tab lives on the page, not in the tab). */
+  initialFile?: File | null,
+): {
   items: UploadItem[];
   addFiles: (files: File[]) => void;
   removeItem: (id: string) => void;
@@ -160,7 +164,18 @@ export function useUploadQueue(scope?: QueueScope): {
   jobStatus: BulkStatus | undefined;
   isSubmitting: boolean;
 } {
-  const [items, setItems] = React.useState<UploadItem[]>([]);
+  // Seeded via the state initializer (not an effect) so a remount paints
+  // the item immediately and can never re-seed after a user Remove.
+  const [items, setItems] = React.useState<UploadItem[]>(() =>
+    initialFile
+      ? [
+          toItem(
+            initialFile,
+            scopeIsComplete(scope) ? 'pending_check' : 'pending_scope',
+          ),
+        ]
+      : [],
+  );
   const [jobId, setJobId] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const { data: jobStatus } = useBulkUploadStatus(jobId);
