@@ -51,6 +51,13 @@ export async function refreshAccessToken(): Promise<string> {
   return refreshPromise;
 }
 
+/**
+ * Blob responses may carry the server's Content-Disposition filename
+ * (the bundle endpoint knows the matched-row count, the client does not).
+ * Exposed as an optional property so callers can name the saved file.
+ */
+export type DownloadBlob = Blob & { filename?: string };
+
 class ApiClient {
   private accessToken: string | null = null;
 
@@ -101,7 +108,7 @@ class ApiClient {
     return (await res.json()) as T;
   }
 
-  async fetchBlob(path: string, init: RequestInit = {}, retried = false): Promise<Blob> {
+  async fetchBlob(path: string, init: RequestInit = {}, retried = false): Promise<DownloadBlob> {
     const headers = new Headers(init.headers);
     // JSON bodies need an explicit content type (same rule as request()).
     if (!headers.has('Content-Type') && typeof init.body === 'string') {
@@ -126,7 +133,11 @@ class ApiClient {
     // Re-type defensively: some S3/streamed responses arrive without a
     // Content-Type, and Chrome refuses to render untyped blobs as PDF.
     // A declared type (text/csv from the export endpoint) wins.
-    return new Blob([raw], { type: raw.type || 'application/pdf' });
+    const blob = new Blob([raw], { type: raw.type || 'application/pdf' }) as DownloadBlob;
+    const disposition = res.headers.get('Content-Disposition') ?? '';
+    const filename = /filename="([^"]+)"/.exec(disposition)?.[1];
+    if (filename) blob.filename = filename;
+    return blob;
   }
 
 }

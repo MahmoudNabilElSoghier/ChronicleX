@@ -164,6 +164,8 @@ export const entriesApi = {
     }),
   exportCsv: (body: ExportRequest): Promise<Blob> =>
     api.fetchBlob('/entries/export', { method: 'POST', body: JSON.stringify(body) }),
+  bundleDownload: (body: ExportRequest): Promise<Blob> =>
+    api.fetchBlob('/entries/bundle-download', { method: 'POST', body: JSON.stringify(body) }),
 };
 
 export const catalogApi = {

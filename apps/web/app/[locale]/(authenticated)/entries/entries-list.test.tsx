@@ -30,7 +30,7 @@ vi.mock('@/lib/api/entries', async (importOriginal) => {
   const mod = await importOriginal<typeof import('@/lib/api/entries')>();
   return {
     ...mod,
-    entriesApi: { list: vi.fn(), download: vi.fn(), exportCsv: vi.fn() },
+    entriesApi: { list: vi.fn(), download: vi.fn(), exportCsv: vi.fn(), bundleDownload: vi.fn() },
     catalogApi: {
       companies: vi.fn().mockResolvedValue({ items: [] }),
       projects: vi.fn().mockResolvedValue({ items: [] }),
@@ -45,7 +45,15 @@ vi.mock('@/lib/download', () => ({
 }));
 
 vi.mock('sonner', () => ({
-  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    warning: vi.fn(),
+    // Real toast.loading returns a toast id used to update the same toast.
+    loading: vi.fn(() => 'progress-toast'),
+    dismiss: vi.fn(),
+  },
 }));
 
 vi.mock('@/lib/auth/auth-context', () => ({
@@ -59,6 +67,7 @@ import { toast } from 'sonner';
 
 const listMock = vi.mocked(entriesApi.list);
 const exportMock = vi.mocked(entriesApi.exportCsv);
+const bundleMock = vi.mocked(entriesApi.bundleDownload);
 
 function item(id: string, serial: string): EntryListItem {
   return {
@@ -122,6 +131,7 @@ describe('EntriesListPage', () => {
       hasMore: false,
     } satisfies EntriesListResponse);
     exportMock.mockResolvedValue(new Blob(['csv']));
+    bundleMock.mockResolvedValue(new Blob(['PK'], { type: 'application/zip' }));
   });
 
   it('renders 5 mock items', async () => {
@@ -357,6 +367,115 @@ describe('EntriesListPage', () => {
         expect(toast.error).toHaveBeenCalledWith('تعذر التصدير، حاول مرة أخرى'),
       );
       expect(saveBlob).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('ZIP bundle download', () => {
+    it('dropdown shows "تنزيل الملفات (ZIP)" section with labels and lucide icons', async () => {
+      const user = userEvent.setup();
+      renderList();
+      await waitFor(() => expect(screen.getByText('6200000001')).toBeInTheDocument());
+
+      await user.click(screen.getByRole('button', { name: 'تصدير' }));
+      expect(await screen.findByText('تصدير Excel (CSV)')).toBeInTheDocument();
+      expect(screen.getByText('تنزيل الملفات (ZIP)')).toBeInTheDocument();
+      expect(document.querySelector('.lucide-file-spreadsheet')).not.toBeNull();
+      expect(document.querySelector('.lucide-package')).not.toBeNull();
+      // Two items per section — CSV "تصدير …" vs ZIP "تنزيل …" names differ.
+      expect(screen.getAllByRole('menuitem')).toHaveLength(4);
+      expect(screen.getByRole('menuitem', { name: 'تصدير المحدد (0)' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'تصدير حسب الفلاتر' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'تنزيل المحدد (0)' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'تنزيل حسب الفلاتر' })).toBeInTheDocument();
+      await user.keyboard('{Escape}');
+    });
+
+    it('تنزيل المحدد calls entriesApi.bundleDownload with mode=selected', async () => {
+      const user = userEvent.setup();
+      renderList();
+      await waitFor(() => expect(screen.getByText('6200000001')).toBeInTheDocument());
+
+      await user.click(screen.getByLabelText('6200000001'));
+      await user.click(screen.getByLabelText('6200000002'));
+      await user.click(screen.getByRole('button', { name: 'تصدير' }));
+      await user.click(await screen.findByRole('menuitem', { name: 'تنزيل المحدد (2)' }));
+
+      await waitFor(() =>
+        expect(bundleMock).toHaveBeenCalledWith({
+          mode: 'selected',
+          entryIds: ['e1', 'e2'],
+        }),
+      );
+      expect(exportMock).not.toHaveBeenCalled();
+      expect(toast.loading).toHaveBeenCalledWith('جاري تجهيز الملفات...');
+    });
+
+    it('saveBlob receives a filename ending in .zip', async () => {
+      const user = userEvent.setup();
+      // The server sends entries-selected-{count}-{date}.zip via
+      // Content-Disposition; fetchBlob exposes it as blob.filename.
+      bundleMock.mockResolvedValue(
+        Object.assign(new Blob(['PK'], { type: 'application/zip' }), {
+          filename: 'entries-selected-1-2026-10-09.zip',
+        }),
+      );
+      renderList();
+      await waitFor(() => expect(screen.getByText('6200000001')).toBeInTheDocument());
+
+      await user.click(screen.getByLabelText('6200000001'));
+      await user.click(screen.getByRole('button', { name: 'تصدير' }));
+      await user.click(await screen.findByRole('menuitem', { name: 'تنزيل المحدد (1)' }));
+
+      await waitFor(() =>
+        expect(saveBlob).toHaveBeenCalledWith(
+          expect.any(Blob),
+          expect.stringMatching(/\.zip$/),
+        ),
+      );
+      expect(saveBlob.mock.calls[0][1]).toBe('entries-selected-1-2026-10-09.zip');
+      const saved = saveBlob.mock.calls[0][0] as Blob;
+      expect(saved.type).toBe('application/zip');
+    });
+
+    it('Success toast: "تم تنزيل N ملف"', async () => {
+      const user = userEvent.setup();
+      renderList();
+      await waitFor(() => expect(screen.getByText('6200000001')).toBeInTheDocument());
+
+      await user.click(screen.getByLabelText('6200000001'));
+      await user.click(screen.getByLabelText('6200000002'));
+      await user.click(screen.getByRole('button', { name: 'تصدير' }));
+      await user.click(await screen.findByRole('menuitem', { name: 'تنزيل المحدد (2)' }));
+
+      await waitFor(() =>
+        expect(toast.success).toHaveBeenCalledWith('تم تنزيل 2 ملف', {
+          id: 'progress-toast',
+        }),
+      );
+      expect(toast.error).not.toHaveBeenCalled();
+    });
+
+    it('CSV export still works unchanged', async () => {
+      const user = userEvent.setup();
+      renderList();
+      await waitFor(() => expect(screen.getByText('6200000001')).toBeInTheDocument());
+
+      await user.click(screen.getByLabelText('6200000001'));
+      await user.click(await screen.findByRole('button', { name: 'تصدير المحدد' }));
+
+      await waitFor(() =>
+        expect(exportMock).toHaveBeenCalledWith({
+          mode: 'selected',
+          entryIds: ['e1'],
+        }),
+      );
+      expect(bundleMock).not.toHaveBeenCalled();
+      expect(saveBlob).toHaveBeenCalledWith(
+        expect.any(Blob),
+        expect.stringMatching(/^entries-\d{4}-\d{2}-\d{2}\.csv$/),
+      );
+      expect(toast.success).toHaveBeenCalledWith('تم تصدير 1 صف');
+      expect(toast.loading).not.toHaveBeenCalled();
     });
   });
 });

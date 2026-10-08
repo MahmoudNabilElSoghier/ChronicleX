@@ -57,11 +57,32 @@ describe('ApiClient', () => {
       ok: true,
       status: 200,
       statusText: 'OK',
+      headers: new Headers(),
       blob: () => Promise.resolve(untitled),
     });
     const blob = await api.fetchBlob('/entries/e1/file');
     expect(blob.type).toBe('application/pdf');
     expect(blob.size).toBeGreaterThan(0);
+    expect(blob.filename).toBeUndefined();
+  });
+
+  it('fetchBlob exposes the Content-Disposition filename as blob.filename', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers({
+        'Content-Type': 'application/zip',
+        'Content-Disposition': 'attachment; filename="entries-filtered-42-2026-10-09.zip"',
+      }),
+      blob: () => Promise.resolve(new Blob(['PK'], { type: 'application/zip' })),
+    });
+    const blob = await api.fetchBlob('/entries/bundle-download', {
+      method: 'POST',
+      body: JSON.stringify({ mode: 'filtered' }),
+    });
+    expect(blob.filename).toBe('entries-filtered-42-2026-10-09.zip');
+    expect(blob.type).toBe('application/zip');
   });
 
   it('does NOT set Content-Type for FormData bodies (boundary must survive)', async () => {

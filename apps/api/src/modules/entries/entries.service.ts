@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import archiver from 'archiver';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import type { Prisma } from '../../generated/prisma/client';
@@ -12,6 +13,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PermissionsService } from '../rbac/permissions.service';
 import { ScopeMatcher } from '../rbac/scope-matcher';
 import { StorageService } from '../storage/storage.service';
+import type { BundleDownloadDto } from './dto/bundle-download.dto';
 import type { ExportEntriesDto } from './dto/export-entries.dto';
 import type { ListEntriesDto } from './dto/list-entries.dto';
 import type { UpdateEntryDto } from './dto/update-entry.dto';
@@ -27,6 +29,16 @@ export interface Actor {
 
 /** Rows per export query — bounded so 100K-row exports never sit in memory. */
 const EXPORT_BATCH_SIZE = 1000;
+
+/**
+ * ZIP bundle caps: 1,000 files (request side AND matched rows — a filtered
+ * bundle can request nothing and still match a huge set) and 500 MB of
+ * stored bytes summed, so a big batch never materializes in API memory.
+ */
+const BUNDLE_MAX_ENTRIES = 1_000;
+const BUNDLE_MAX_BYTES = 500 * 1024 * 1024;
+const BUNDLE_COUNT_CAP_MESSAGE = 'Bundle download limited to 1,000 entries. Narrow your filters.';
+const BUNDLE_SIZE_CAP_MESSAGE = 'Bundle download exceeds the 500 MB limit. Narrow your selection.';
 
 /**
  * Fixed Arabic headers: the CSV is an org-wide data artifact, so it does
@@ -83,6 +95,44 @@ function entryToCsvLine(row: ExportRow): string {
   ]
     .map(csvField)
     .join(',');
+}
+
+/** Shared columns for the CSV export (order is part of the contract). */
+const EXPORT_SELECT = {
+  id: true,
+  serial: true,
+  typePrefix: true,
+  year: true,
+  fileName: true,
+  fileSize: true,
+  fileHash: true,
+  createdAt: true,
+  company: { select: { code: true, nameAr: true, nameEn: true } },
+  project: { select: { code: true, nameAr: true, nameEn: true } },
+  uploader: { select: { nameAr: true, nameEn: true } },
+} satisfies Prisma.EntrySelect;
+
+/**
+ * Keyset continuation: rows strictly after `last` in (createdAt, id) order.
+ * The CSV stream pages identically to the list query — ties on createdAt
+ * cannot skip or duplicate rows.
+ */
+function keysetWhere(
+  where: Prisma.EntryWhereInput,
+  last: { createdAt: Date; id: string } | undefined,
+): Prisma.EntryWhereInput {
+  if (!last) return where;
+  return {
+    AND: [
+      where,
+      {
+        OR: [
+          { createdAt: { gt: last.createdAt } },
+          { AND: [{ createdAt: last.createdAt }, { id: { gt: last.id } }] },
+        ],
+      },
+    ],
+  };
 }
 
 @Injectable()
@@ -308,14 +358,17 @@ export class EntriesService {
   }
 
   /**
-   * Streamed CSV export. The WHERE (scope included) is fully built BEFORE
-   * the stream exists, so 403/400 still surface as normal JSON errors and
-   * only successful exports start writing headers. Rows arrive in
-   * createdAt-ASC keyset batches of 1000 — never the whole result set.
+   * Shared WHERE + cross-mode validation for export (CSV) and
+   * bundle-download: one builder so every artifact covers exactly the rows
+   * the list shows. All 400/403 failures surface here, BEFORE any stream
+   * or archive exists. The BundleDownloadDto structurally mirrors
+   * ExportEntriesDto, so both share these rules.
    */
-  async export(dto: ExportEntriesDto, actor: Actor): Promise<Readable> {
+  private async resolveExportWhere(
+    dto: ExportEntriesDto | BundleDownloadDto,
+    actor: Actor,
+  ): Promise<Prisma.EntryWhereInput> {
     const entryIds = dto.entryIds;
-    let where: Prisma.EntryWhereInput;
     if (dto.mode === 'selected') {
       if (!entryIds || entryIds.length === 0) {
         throw new BadRequestException('mode=selected requires a non-empty entryIds array');
@@ -329,19 +382,118 @@ export class EntriesService {
       const scopeWhere = await this.buildScopeWhere(actor.userId);
       // Out-of-scope ids are silently dropped (never a whole-request 403);
       // the difference surfaces in the EXPORT_PARTIAL audit event below.
-      where = { AND: [scopeWhere, { id: { in: entryIds } }, { deletedAt: null }] };
-    } else {
-      if (entryIds !== undefined) {
-        throw new BadRequestException('entryIds must not be sent with mode=filtered');
-      }
-      if (!dto.filters) {
-        throw new BadRequestException('mode=filtered requires filters');
-      }
-      // buildListWhere also applies the scope clause + includeDeleted grant.
-      where = await this.buildListWhere(dto.filters, actor.userId);
+      return { AND: [scopeWhere, { id: { in: entryIds } }, { deletedAt: null }] };
     }
+    if (entryIds !== undefined) {
+      throw new BadRequestException('entryIds must not be sent with mode=filtered');
+    }
+    if (!dto.filters) {
+      throw new BadRequestException('mode=filtered requires filters');
+    }
+    // buildListWhere also applies the scope clause + includeDeleted grant.
+    return this.buildListWhere(dto.filters, actor.userId);
+  }
 
+  /**
+   * Streamed CSV export. The WHERE (scope included) is fully built BEFORE
+   * the stream exists, so 403/400 still surface as normal JSON errors and
+   * only successful exports start writing headers. Rows arrive in
+   * createdAt-ASC keyset batches of 1000 — never the whole result set.
+   */
+  async export(dto: ExportEntriesDto, actor: Actor): Promise<Readable> {
+    const where = await this.resolveExportWhere(dto, actor);
     return Readable.from(this.exportCsvChunks(where, dto, actor), { objectMode: false });
+  }
+
+  /**
+   * ZIP bundle of the STORED entry PDFs (MinIO) — the "real files" flow.
+   * WHERE is fully built BEFORE any storage stream exists, so 403/400 and
+   * the 404-no-match surface as JSON errors and only a successful request
+   * opens object streams. File names are `${serial}.pdf`; duplicate serials
+   * (same serial, different year/company) get a `-YEAR` suffix. The audit
+   * log (counts only) is written once the bundle is assembled; the zip
+   * itself streams through the controller.
+   */
+  async bundleDownload(
+    dto: BundleDownloadDto,
+    actor: Actor,
+  ): Promise<{ stream: Readable; count: number; totalBytes: number }> {
+    const requested = dto.mode === 'selected' ? (dto.entryIds?.length ?? 0) : undefined;
+    if (requested !== undefined && requested > BUNDLE_MAX_ENTRIES) {
+      throw new BadRequestException(BUNDLE_COUNT_CAP_MESSAGE);
+    }
+    const where = await this.resolveExportWhere(dto, actor);
+    const entries = await this.prisma.entry.findMany({
+      where,
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: { id: true, serial: true, year: true, fileKey: true, fileSize: true },
+    });
+    if (entries.length === 0) {
+      throw new NotFoundException('No entries match the selection.');
+    }
+    if (entries.length > BUNDLE_MAX_ENTRIES) {
+      throw new BadRequestException(BUNDLE_COUNT_CAP_MESSAGE);
+    }
+    const totalBytes = entries.reduce((sum, e) => sum + e.fileSize, 0);
+    if (totalBytes > BUNDLE_MAX_BYTES) {
+      throw new BadRequestException(BUNDLE_SIZE_CAP_MESSAGE);
+    }
+    const count = entries.length;
+
+    // Name collisions: fileKey is unique, so only the SERIAL can repeat
+    // (same serial across companies/years). Duplicate serials all get the
+    // `-YEAR` suffix; identical serial+year (foreign companies) falls back
+    // to a numeric suffix so no two archive entries share a name.
+    const serialCounts = new Map<string, number>();
+    for (const e of entries) {
+      serialCounts.set(e.serial, (serialCounts.get(e.serial) ?? 0) + 1);
+    }
+    const used = new Set<string>();
+    const uniqueName = (e: (typeof entries)[number]): string => {
+      const base = (serialCounts.get(e.serial) ?? 0) > 1 ? `${e.serial}-${e.year}` : e.serial;
+      let name = `${base}.pdf`;
+      if (used.has(name)) {
+        let n = 2;
+        while (used.has(`${base}-${n}.pdf`)) n += 1;
+        name = `${base}-${n}.pdf`;
+      }
+      used.add(name);
+      return name;
+    };
+
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    // All object streams are opened up front (append is lazy — archiver only
+    // reads each source when its entry is reached).
+    for (const e of entries) {
+      archive.append(await this.storage.getObjectStream(e.fileKey), { name: uniqueName(e) });
+    }
+    archive.finalize();
+
+    // Manual audit (documented exception, same as exportCsvChunks): the
+    // response streams, so the @Audit interceptor cannot bracket it.
+    // Counts only — never the id list itself.
+    await this.prisma.auditLog
+      .create({
+        data: {
+          userId: actor.userId,
+          action: 'EXPORT',
+          resource: 'ENTRY',
+          resourceId: null,
+          newValues: {
+            event: 'BUNDLE_DOWNLOAD',
+            bundle: true,
+            mode: dto.mode,
+            count,
+            totalBytes,
+            entryIdsCount: requested ?? null,
+            ...(dto.mode === 'filtered' ? { filters: { ...(dto.filters ?? {}) } } : {}),
+          },
+          ipAddress: actor.ip,
+          userAgent: actor.userAgent,
+        },
+      })
+      .catch(() => undefined);
+    return { stream: archive as unknown as Readable, count, totalBytes };
   }
 
   private async *exportCsvChunks(
@@ -351,43 +503,16 @@ export class EntriesService {
   ): AsyncGenerator<string> {
     yield '\uFEFF' + CSV_HEADERS.map(csvField).join(',') + '\r\n';
 
-    const select = {
-      id: true,
-      serial: true,
-      typePrefix: true,
-      year: true,
-      fileName: true,
-      fileSize: true,
-      fileHash: true,
-      createdAt: true,
-      company: { select: { code: true, nameAr: true, nameEn: true } },
-      project: { select: { code: true, nameAr: true, nameEn: true } },
-      uploader: { select: { nameAr: true, nameEn: true } },
-    } satisfies Prisma.EntrySelect;
-
     let exported = 0;
     let last: { createdAt: Date; id: string } | undefined;
     for (;;) {
       // Keyset pagination on (createdAt, id): ties on createdAt cannot skip
       // or duplicate rows the way a plain `createdAt > last` cursor would.
-      const batchWhere: Prisma.EntryWhereInput = last
-        ? {
-            AND: [
-              where,
-              {
-                OR: [
-                  { createdAt: { gt: last.createdAt } },
-                  { AND: [{ createdAt: last.createdAt }, { id: { gt: last.id } }] },
-                ],
-              },
-            ],
-          }
-        : where;
       const batch = await this.prisma.entry.findMany({
-        where: batchWhere,
+        where: keysetWhere(where, last),
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         take: EXPORT_BATCH_SIZE,
-        select,
+        select: EXPORT_SELECT,
       });
       if (batch.length === 0) break;
       exported += batch.length;

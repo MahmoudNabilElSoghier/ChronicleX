@@ -7,7 +7,7 @@ import { useRouter } from '@/lib/navigation';
 import { parseAsInteger, parseAsString, useQueryStates } from 'nuqs';
 import * as React from 'react';
 import { toast } from 'sonner';
-import { ChevronDown, Loader2 } from 'lucide-react';
+import { ChevronDown, FileSpreadsheet, Loader2, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -15,6 +15,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
@@ -147,10 +148,35 @@ export default function EntriesListPage(): JSX.Element {
     setExporting(true);
     try {
       const blob = await entriesApi.exportCsv(body);
-      saveBlob(blob, `entries-${new Date().toISOString().slice(0, 10)}.csv`);
+      const date = new Date().toISOString().slice(0, 10);
+      saveBlob(blob, `entries-${date}.csv`);
       toast.success(successMsg);
     } catch {
       toast.error(t('list.exportFailed'));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  /**
+   * ZIP bundle: the original stored PDFs, streamed from MinIO. The server
+   * knows the matched-row count (it lands in the Content-Disposition
+   * filename) — fetchBlob exposes it as blob.filename.
+   */
+  async function runBundle(body: ExportRequest, successMsg: string): Promise<void> {
+    setExporting(true);
+    const progressId = toast.loading(t('list.bundleProgress'));
+    try {
+      const blob = await entriesApi.bundleDownload(body);
+      const date = new Date().toISOString().slice(0, 10);
+      const fallback =
+        body.mode === 'selected'
+          ? `entries-selected-${body.entryIds?.length ?? 0}-${date}.zip`
+          : `entries-filtered-${date}.zip`;
+      saveBlob(blob, (blob as { filename?: string }).filename ?? fallback);
+      toast.success(successMsg, { id: progressId });
+    } catch {
+      toast.error(t('list.bundleFailed'), { id: progressId });
     } finally {
       setExporting(false);
     }
@@ -169,6 +195,21 @@ export default function EntriesListPage(): JSX.Element {
     delete f.cursor;
     delete f.limit;
     return runExport({ mode: 'filtered', filters: f }, t('list.exportDoneFiltered'));
+  }
+
+  function bundleSelectedRows(): Promise<void> {
+    const count = selectedIds.length;
+    return runBundle(
+      { mode: 'selected', entryIds: selectedIds },
+      t('list.bundleDoneSelected', { count }),
+    );
+  }
+
+  function bundleFilteredRows(): Promise<void> {
+    const f: EntriesFilters = { ...queryFilters };
+    delete f.cursor;
+    delete f.limit;
+    return runBundle({ mode: 'filtered', filters: f }, t('list.bundleDoneFiltered'));
   }
 
   async function download(entry: EntryListItem): Promise<void> {
@@ -203,9 +244,11 @@ export default function EntriesListPage(): JSX.Element {
           <Button onClick={() => router.push('/upload')}>{t('list.upload')}</Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
+              {/* Stays enabled while exporting so the menu can be reopened
+                  to reveal the in-flight (disabled) sections. */}
               <Button
                 variant="outline"
-                disabled={exporting || allItems.length === 0}
+                disabled={allItems.length === 0}
                 aria-label={t('list.export')}
               >
                 {exporting ? (
@@ -216,7 +259,11 @@ export default function EntriesListPage(): JSX.Element {
                 {t('list.export')}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" className="min-w-56">
+              <DropdownMenuLabel className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold uppercase text-muted-foreground">
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+                {t('list.exportCsvSection')}
+              </DropdownMenuLabel>
               <DropdownMenuItem
                 disabled={selectedCount === 0 || exporting}
                 onSelect={() => void exportSelectedRows()}
@@ -225,6 +272,20 @@ export default function EntriesListPage(): JSX.Element {
               </DropdownMenuItem>
               <DropdownMenuItem disabled={exporting} onSelect={() => void exportFilteredRows()}>
                 {t('list.exportFiltered')}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold uppercase text-muted-foreground">
+                <Package className="h-3.5 w-3.5" />
+                {t('list.exportZipSection')}
+              </DropdownMenuLabel>
+              <DropdownMenuItem
+                disabled={selectedCount === 0 || exporting}
+                onSelect={() => void bundleSelectedRows()}
+              >
+                {t('list.bundleSelected', { count: selectedCount })}
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={exporting} onSelect={() => void bundleFilteredRows()}>
+                {t('list.bundleFiltered')}
               </DropdownMenuItem>
               <DropdownMenuLabel className="px-2 py-1.5 text-xs font-normal text-muted-foreground">
                 {t('list.exportNote')}

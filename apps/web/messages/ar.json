@@ -68,7 +68,15 @@
       "exportFailed": "تعذر التصدير، حاول مرة أخرى",
       "selectedCount": "{count} صف محدد",
       "clearSelection": "إلغاء التحديد",
-      "selectAll": "تحديد الكل"
+      "selectAll": "تحديد الكل",
+      "exportCsvSection": "تصدير Excel (CSV)",
+      "exportZipSection": "تنزيل الملفات (ZIP)",
+      "bundleSelected": "تنزيل المحدد ({count})",
+      "bundleFiltered": "تنزيل حسب الفلاتر",
+      "bundleProgress": "جاري تجهيز الملفات...",
+      "bundleDoneSelected": "تم تنزيل {count} ملف",
+      "bundleDoneFiltered": "تم تنزيل الملفات المطابقة للفلاتر",
+      "bundleFailed": "تعذر تنزيل الملفات، حاول مرة أخرى"
     },
     "filters": {
       "company": "الشركة",

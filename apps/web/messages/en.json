@@ -68,7 +68,15 @@
       "exportFailed": "Export failed, try again",
       "selectedCount": "{count} rows selected",
       "clearSelection": "Clear selection",
-      "selectAll": "Select all"
+      "selectAll": "Select all",
+      "exportCsvSection": "Export to Excel (CSV)",
+      "exportZipSection": "Download files (ZIP)",
+      "bundleSelected": "Download selected ({count})",
+      "bundleFiltered": "Download by current filters",
+      "bundleProgress": "Preparing files...",
+      "bundleDoneSelected": "Downloaded {count} files",
+      "bundleDoneFiltered": "Downloaded files matching the filters",
+      "bundleFailed": "Could not download files, try again"
     },
     "filters": {
       "company": "Company",

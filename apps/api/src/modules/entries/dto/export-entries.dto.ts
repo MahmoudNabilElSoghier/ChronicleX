@@ -21,7 +21,10 @@ import { ListEntriesDto } from './list-entries.dto';
  * (entryIds alongside filtered / filters alongside selected) is checked
  * in EntriesService.export(), where the error message can name both fields.
  *
- * `format` is reserved for a future 'xlsx' — csv only for now.
+ * `format` is vestigial ('csv' only — 'pdf' never ships): kept optional so
+ * older clients sending format:'csv' keep working, while format:'pdf' now
+ * fails validation with a clear 400 (the PDF report was replaced by the
+ * ZIP bundle endpoint).
  */
 export class ExportEntriesDto {
   @IsIn(['selected', 'filtered'])
@@ -41,5 +44,5 @@ export class ExportEntriesDto {
 
   @IsOptional()
   @IsIn(['csv'])
-  format = 'csv' as const;
+  format?: 'csv';
 }

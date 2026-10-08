@@ -194,4 +194,18 @@ describe('PermissionsGuard', () => {
     await expect(guard.canActivate(ctxWith(reqFor({ id: 'u3' })))).resolves.toBe(true);
     expect(scopes.resolve).not.toHaveBeenCalled();
   });
+
+  it('ARCHIVIST with VIEW ENTRY (no EXPORT) → allow POST /entries/bundle-download', async () => {
+    // The bundle route is @RequirePermission('VIEW', 'ENTRY') with no
+    // scopeHint: it downloads files the caller can already see, so a
+    // VIEW-only ARCHIVIST may use it without the EXPORT permission.
+    permissions.getEffectiveGrants.mockResolvedValue([
+      grant('CREATE', 'ENTRY', 'PROJECT', 'p1'),
+      grant('UPDATE', 'ENTRY', 'PROJECT', 'p1'),
+      grant('VIEW', 'ENTRY', 'PROJECT', 'p1'),
+    ]);
+    setRequired({ action: 'VIEW', resource: 'ENTRY' });
+    await expect(guard.canActivate(ctxWith(reqFor({ id: 'u3' })))).resolves.toBe(true);
+    expect(scopes.resolve).not.toHaveBeenCalled();
+  });
 });

@@ -29,6 +29,7 @@ import { RequirePermission } from '../auth/decorators/require-permission.decorat
 import type { AuthenticatedUser } from '../auth/types';
 import { Audit } from '../audit/audit.decorator';
 import { PermissionsGuard } from '../rbac/guards/permissions.guard';
+import { BundleDownloadDto } from './dto/bundle-download.dto';
 import { ExportEntriesDto } from './dto/export-entries.dto';
 import { ListEntriesDto } from './dto/list-entries.dto';
 import { UpdateEntryDto } from './dto/update-entry.dto';
@@ -128,17 +129,56 @@ export class EntriesController {
     // 2. Then everything else.
     // Scope/DTO failures throw BEFORE the stream exists — the exception
     // layer still formats them as JSON (same as streamFile).
-    const stream = await this.entries.export(dto, {
-      userId: user.id,
-      ip,
-      userAgent: userAgent ?? null,
-    });
+    const stream = await this.entries.export(
+      dto,
+      { userId: user.id, ip, userAgent: userAgent ?? null },
+    );
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader(
       'Content-Disposition',
       `attachment; filename="entries-${new Date().toISOString().slice(0, 10)}.csv"`,
     );
     res.setHeader('Transfer-Encoding', 'chunked');
+    stream.pipe(res);
+  }
+
+  @Post('bundle-download')
+  // VIEW, not EXPORT: bundling is a view-time download of the files the
+  // caller can already see — ARCHIVIST/VIEWER without EXPORT may use it.
+  // Scope is enforced inside the service via buildScopeWhere (no hint).
+  @RequirePermission('VIEW', 'ENTRY')
+  async bundleDownload(
+    @Body() dto: BundleDownloadDto,
+    @Req() req: Request,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+    @Headers('user-agent') userAgent: string | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
+    // 1. CORS FIRST — same rule as exportEntries/streamFile above.
+    applyCorsHeaders(req, res, this.corsOrigins());
+    // 2. Then everything else; scope/DTO/cap failures throw before the
+    // response is committed and surface as JSON.
+    const { stream, count } = await this.entries.bundleDownload(dto, {
+      userId: user.id,
+      ip,
+      userAgent: userAgent ?? null,
+    });
+    const date = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="entries-${dto.mode}-${count}-${date}.zip"`,
+    );
+    res.setHeader('Transfer-Encoding', 'chunked');
+    // A MinIO read can fail mid-stream: kill the response instead of
+    // emitting a corrupt zip — but log server-side (silent client-side
+    // truncation alone hides production MinIO failures).
+    stream.on('error', (err: Error) => {
+      // eslint-disable-next-line no-console
+      console.error('[bundle-download] stream error during zip pipe:', err);
+      res.destroy();
+    });
     stream.pipe(res);
   }
 

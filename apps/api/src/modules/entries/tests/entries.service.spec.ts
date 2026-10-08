@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
+import { Readable } from 'node:stream';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { PermissionsService } from '../../rbac/permissions.service';
@@ -47,6 +48,23 @@ describe('EntriesService', () => {
     permissions as unknown as PermissionsService,
     scopes,
   );
+
+  function exportRow(over: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: 'e1',
+      serial: '6200000000',
+      typePrefix: '62',
+      year: 2025,
+      fileName: '6200000000.pdf',
+      fileSize: 1024,
+      fileHash: 'abc123',
+      createdAt: new Date('2025-01-01T00:00:00.000Z'),
+      company: { code: 2000, nameAr: 'الشركة', nameEn: 'Co' },
+      project: { code: 'R', nameAr: 'الرحاب', nameEn: 'Rehab' },
+      uploader: { nameAr: 'مدير', nameEn: 'Manager' },
+      ...over,
+    };
+  }
 
   const project = {
     id: 'p1',
@@ -486,23 +504,6 @@ describe('EntriesService', () => {
   });
 
   describe('export (CSV)', () => {
-    function exportRow(over: Record<string, unknown> = {}): Record<string, unknown> {
-      return {
-        id: 'e1',
-        serial: '6200000000',
-        typePrefix: '62',
-        year: 2025,
-        fileName: '6200000000.pdf',
-        fileSize: 1024,
-        fileHash: 'abc123',
-        createdAt: new Date('2025-01-01T00:00:00.000Z'),
-        company: { code: 2000, nameAr: 'الشركة', nameEn: 'Co' },
-        project: { code: 'R', nameAr: 'الرحاب', nameEn: 'Rehab' },
-        uploader: { nameAr: 'مدير', nameEn: 'Manager' },
-        ...over,
-      };
-    }
-
     async function readAll(stream: NodeJS.ReadableStream): Promise<string> {
       let out = '';
       for await (const chunk of stream) out += String(chunk);
@@ -701,6 +702,187 @@ describe('EntriesService', () => {
         svc.export({ mode: 'filtered', filters: {} as never, entryIds: ['e1'] } as never, ACTOR),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.entry.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('bundleDownload (ZIP)', () => {
+    function bundleRow(over: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        id: 'e1',
+        serial: '6200000000',
+        year: 2025,
+        fileKey: '2000/REHAB/2025/6200000000.pdf',
+        fileSize: 1024,
+        ...over,
+      };
+    }
+
+    function mockStorage(): void {
+      storage.getObjectStream.mockImplementation((key: string) =>
+        Promise.resolve(Readable.from([Buffer.from(`bytes-for-${key}`)])),
+      );
+    }
+
+    async function readZip(stream: NodeJS.ReadableStream): Promise<Buffer> {
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+      return Buffer.concat(chunks);
+    }
+
+    beforeEach(() => {
+      prisma.auditLog.create.mockResolvedValue({});
+      permissions.getEffectiveGrants.mockResolvedValue([
+        { action: 'VIEW', resource: 'ENTRY', scopeType: 'GROUP', scopeId: '' },
+      ]);
+    });
+
+    it("mode='selected' returns a Readable stream of a real zip (PK magic)", async () => {
+      prisma.entry.findMany.mockResolvedValue([
+        bundleRow(),
+        bundleRow({ id: 'e2', serial: '6200000001', fileKey: '2000/REHAB/2025/6200000001.pdf' }),
+      ]);
+      mockStorage();
+
+      const { stream, count, totalBytes } = await svc.bundleDownload(
+        { mode: 'selected', entryIds: ['e1', 'e2'] } as never,
+        ACTOR,
+      );
+
+      // archiver's Archiver delegates to its own Transform (readable-stream
+      // copy), so a node:stream instanceof check would be a false negative —
+      // what matters is that it is a pipeable/readable stream.
+      expect(typeof (stream as { pipe: unknown }).pipe).toBe('function');
+      expect(count).toBe(2);
+      expect(totalBytes).toBe(2048);
+      expect(storage.getObjectStream).toHaveBeenCalledTimes(2);
+      const zip = await readZip(stream);
+      expect(zip.subarray(0, 2).toString('latin1')).toBe('PK');
+      // Central directory stores names uncompressed — both files present.
+      expect(zip.toString('latin1')).toContain('6200000000.pdf');
+      expect(zip.toString('latin1')).toContain('6200000001.pdf');
+    });
+
+    it('bundle respects scope: PROJECT_ADMIN sees only own project entries', async () => {
+      permissions.getEffectiveGrants.mockResolvedValue([
+        { action: 'VIEW', resource: 'ENTRY', scopeType: 'PROJECT', scopeId: 'p1' },
+      ]);
+      prisma.entry.findMany.mockResolvedValue([]);
+      mockStorage();
+
+      await expect(
+        svc.bundleDownload({ mode: 'selected', entryIds: ['e1', 'e2'] } as never, ACTOR),
+      ).rejects.toBeInstanceOf(NotFoundException);
+
+      expect(prisma.entry.findMany.mock.calls[0][0].where).toEqual({
+        AND: [
+          { OR: [{ projectId: { in: ['p1'] } }] },
+          { id: { in: ['e1', 'e2'] } },
+          { deletedAt: null },
+        ],
+      });
+    });
+
+    it('bundle > 1,000 entries → 400 with the cap message, nothing streamed', async () => {
+      // Request side: explicit entryIds above the cap fails before any query.
+      await expect(
+        svc.bundleDownload(
+          {
+            mode: 'selected',
+            entryIds: Array.from({ length: 1001 }, (_, i) => `e${i}`),
+          } as never,
+          ACTOR,
+        ),
+      ).rejects.toThrow('Bundle download limited to 1,000 entries. Narrow your filters.');
+      expect(prisma.entry.findMany).not.toHaveBeenCalled();
+
+      // Matched side: filtered mode can match >1,000 rows.
+      prisma.entry.findMany.mockResolvedValue(
+        Array.from({ length: 1001 }, (_, i) => bundleRow({ id: `e${i}` })),
+      );
+      await expect(
+        svc.bundleDownload({ mode: 'filtered', filters: {} as never } as never, ACTOR),
+      ).rejects.toThrow('Bundle download limited to 1,000 entries. Narrow your filters.');
+      expect(storage.getObjectStream).not.toHaveBeenCalled();
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('bundle > 500 MB total → 400 with the size hint', async () => {
+      prisma.entry.findMany.mockResolvedValue([bundleRow({ fileSize: 501 * 1024 * 1024 })]);
+      mockStorage();
+
+      await expect(
+        svc.bundleDownload({ mode: 'filtered', filters: {} as never } as never, ACTOR),
+      ).rejects.toThrow('Bundle download exceeds the 500 MB limit. Narrow your selection.');
+      expect(storage.getObjectStream).not.toHaveBeenCalled();
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('bundle with 0 matching rows → 404 "No entries match the selection."', async () => {
+      prisma.entry.findMany.mockResolvedValue([]);
+      mockStorage();
+
+      await expect(
+        svc.bundleDownload({ mode: 'filtered', filters: {} as never } as never, ACTOR),
+      ).rejects.toThrow('No entries match the selection.');
+      expect(storage.getObjectStream).not.toHaveBeenCalled();
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('bundle with the same serial in two entries → filenames deduplicated with year suffix', async () => {
+      prisma.entry.findMany.mockResolvedValue([
+        bundleRow({ id: 'e1', serial: '6200000000', year: 2025, fileKey: 'A/2025/6200000000.pdf' }),
+        bundleRow({ id: 'e2', serial: '6200000000', year: 2026, fileKey: 'B/2026/6200000000.pdf' }),
+      ]);
+      storage.getObjectStream.mockImplementation((key: string) =>
+        Promise.resolve(
+          Readable.from([Buffer.from(key === 'A/2025/6200000000.pdf' ? 'FIRST' : 'SECOND')]),
+        ),
+      );
+
+      const { stream } = await svc.bundleDownload(
+        { mode: 'selected', entryIds: ['e1', 'e2'] } as never,
+        ACTOR,
+      );
+      const zip = (await readZip(stream)).toString('latin1');
+
+      expect(zip).toContain('6200000000-2025.pdf');
+      expect(zip).toContain('6200000000-2026.pdf');
+      // The bare (collision) name never appears — suffixed names don't
+      // contain the plain `SERIAL.pdf` substring either.
+      expect(zip).not.toContain('6200000000.pdf');
+    });
+
+    it('audit logged with event BUNDLE_DOWNLOAD, totalBytes and count (no id list)', async () => {
+      prisma.entry.findMany.mockResolvedValue([
+        bundleRow(),
+        bundleRow({ id: 'e2', serial: '6200000001', fileKey: '2000/REHAB/2025/6200000001.pdf', fileSize: 2048 }),
+      ]);
+      mockStorage();
+
+      await svc.bundleDownload(
+        { mode: 'selected', entryIds: ['e1', 'e2'] } as never,
+        ACTOR,
+      );
+
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'EXPORT',
+            resource: 'ENTRY',
+            newValues: expect.objectContaining({
+              event: 'BUNDLE_DOWNLOAD',
+              bundle: true,
+              mode: 'selected',
+              count: 2,
+              totalBytes: 3072,
+              entryIdsCount: 2,
+            }),
+          }),
+        }),
+      );
+      const newValues = prisma.auditLog.create.mock.calls[0][0].data.newValues;
+      expect(newValues).not.toHaveProperty('entryIds');
+      expect(newValues).not.toHaveProperty('filters');
     });
   });
 });
