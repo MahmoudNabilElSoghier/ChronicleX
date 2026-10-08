@@ -159,11 +159,25 @@ export class EntriesController {
     applyCorsHeaders(req, res, this.corsOrigins());
     // 2. Then everything else; scope/DTO/cap failures throw before the
     // response is committed and surface as JSON.
-    const { stream, count } = await this.entries.bundleDownload(dto, {
+    const { stream, count, single } = await this.entries.bundleDownload(dto, {
       userId: user.id,
       ip,
       userAgent: userAgent ?? null,
     });
+    if (count === 1 && single) {
+      // One file → raw PDF, no zip+unzip step. Filename matches the ZIP
+      // entry name ({serial}.pdf), so the file comes out identical either way.
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${single.serial}.pdf"`);
+      res.setHeader('Transfer-Encoding', 'chunked');
+      stream.on('error', (err: Error) => {
+        // eslint-disable-next-line no-console
+        console.error('[bundle-download] stream error during single-file pipe:', err);
+        res.destroy();
+      });
+      stream.pipe(res);
+      return;
+    }
     const date = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader(
@@ -172,7 +186,7 @@ export class EntriesController {
     );
     res.setHeader('Transfer-Encoding', 'chunked');
     // A MinIO read can fail mid-stream: kill the response instead of
-    // emitting a corrupt zip — but log server-side (silent client-side
+    // emitting a corrupt file — but log server-side (silent client-side
     // truncation alone hides production MinIO failures).
     stream.on('error', (err: Error) => {
       // eslint-disable-next-line no-console

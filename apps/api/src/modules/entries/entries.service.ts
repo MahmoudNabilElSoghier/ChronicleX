@@ -406,18 +406,25 @@ export class EntriesService {
   }
 
   /**
-   * ZIP bundle of the STORED entry PDFs (MinIO) — the "real files" flow.
+   * Bundle of the STORED entry PDFs (MinIO) — the "real files" flow.
    * WHERE is fully built BEFORE any storage stream exists, so 403/400 and
    * the 404-no-match surface as JSON errors and only a successful request
-   * opens object streams. File names are `${serial}.pdf`; duplicate serials
-   * (same serial, different year/company) get a `-YEAR` suffix. The audit
-   * log (counts only) is written once the bundle is assembled; the zip
-   * itself streams through the controller.
+   * opens object streams. One matched entry streams as the RAW PDF
+   * (zip+unzip for a single file is friction); 2+ entries stream a ZIP
+   * with `${serial}.pdf` names — duplicate serials (same serial, different
+   * year/company) get a `-YEAR` suffix. The audit log (counts only) is
+   * written once the response is assembled; `single` tells the controller
+   * which shape to emit.
    */
   async bundleDownload(
     dto: BundleDownloadDto,
     actor: Actor,
-  ): Promise<{ stream: Readable; count: number; totalBytes: number }> {
+  ): Promise<{
+    stream: Readable;
+    count: number;
+    totalBytes: number;
+    single?: { serial: string; fileKey: string };
+  }> {
     const requested = dto.mode === 'selected' ? (dto.entryIds?.length ?? 0) : undefined;
     if (requested !== undefined && requested > BUNDLE_MAX_ENTRIES) {
       throw new BadRequestException(BUNDLE_COUNT_CAP_MESSAGE);
@@ -440,38 +447,54 @@ export class EntriesService {
     }
     const count = entries.length;
 
-    // Name collisions: fileKey is unique, so only the SERIAL can repeat
+    // One matched file → stream the raw PDF directly (no archiver, no
+    // zip+unzip step); 2+ → zip with collision-free names. File name
+    // collision handling: fileKey is unique, so only the SERIAL can repeat
     // (same serial across companies/years). Duplicate serials all get the
     // `-YEAR` suffix; identical serial+year (foreign companies) falls back
     // to a numeric suffix so no two archive entries share a name.
-    const serialCounts = new Map<string, number>();
-    for (const e of entries) {
-      serialCounts.set(e.serial, (serialCounts.get(e.serial) ?? 0) + 1);
-    }
-    const used = new Set<string>();
-    const uniqueName = (e: (typeof entries)[number]): string => {
-      const base = (serialCounts.get(e.serial) ?? 0) > 1 ? `${e.serial}-${e.year}` : e.serial;
-      let name = `${base}.pdf`;
-      if (used.has(name)) {
-        let n = 2;
-        while (used.has(`${base}-${n}.pdf`)) n += 1;
-        name = `${base}-${n}.pdf`;
+    let stream: Readable;
+    let single: { serial: string; fileKey: string } | undefined;
+    if (count === 1) {
+      const only = entries[0];
+      if (!only) {
+        // Unreachable — entries.length === 1 — but keeps the narrowing honest.
+        throw new NotFoundException('No entries match the selection.');
       }
-      used.add(name);
-      return name;
-    };
+      single = { serial: only.serial, fileKey: only.fileKey };
+      stream = await this.storage.getObjectStream(only.fileKey);
+    } else {
+      const serialCounts = new Map<string, number>();
+      for (const e of entries) {
+        serialCounts.set(e.serial, (serialCounts.get(e.serial) ?? 0) + 1);
+      }
+      const used = new Set<string>();
+      const uniqueName = (e: (typeof entries)[number]): string => {
+        const base = (serialCounts.get(e.serial) ?? 0) > 1 ? `${e.serial}-${e.year}` : e.serial;
+        let name = `${base}.pdf`;
+        if (used.has(name)) {
+          let n = 2;
+          while (used.has(`${base}-${n}.pdf`)) n += 1;
+          name = `${base}-${n}.pdf`;
+        }
+        used.add(name);
+        return name;
+      };
 
-    const archive = archiver('zip', { zlib: { level: 6 } });
-    // All object streams are opened up front (append is lazy — archiver only
-    // reads each source when its entry is reached).
-    for (const e of entries) {
-      archive.append(await this.storage.getObjectStream(e.fileKey), { name: uniqueName(e) });
+      const archive = archiver('zip', { zlib: { level: 6 } });
+      // All object streams are opened up front (append is lazy — archiver
+      // only reads each source when its entry is reached).
+      for (const e of entries) {
+        archive.append(await this.storage.getObjectStream(e.fileKey), { name: uniqueName(e) });
+      }
+      archive.finalize();
+      stream = archive as unknown as Readable;
     }
-    archive.finalize();
 
     // Manual audit (documented exception, same as exportCsvChunks): the
     // response streams, so the @Audit interceptor cannot bracket it.
-    // Counts only — never the id list itself.
+    // Counts only — never the id list itself. `bundle`/`single` record
+    // which response shape was sent (zip vs raw PDF).
     await this.prisma.auditLog
       .create({
         data: {
@@ -481,7 +504,8 @@ export class EntriesService {
           resourceId: null,
           newValues: {
             event: 'BUNDLE_DOWNLOAD',
-            bundle: true,
+            bundle: count > 1,
+            single: count === 1,
             mode: dto.mode,
             count,
             totalBytes,
@@ -493,7 +517,7 @@ export class EntriesService {
         },
       })
       .catch(() => undefined);
-    return { stream: archive as unknown as Readable, count, totalBytes };
+    return { stream, count, totalBytes, ...(single ? { single } : {}) };
   }
 
   private async *exportCsvChunks(

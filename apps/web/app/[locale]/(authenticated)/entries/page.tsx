@@ -161,7 +161,9 @@ export default function EntriesListPage(): JSX.Element {
   /**
    * ZIP bundle: the original stored PDFs, streamed from MinIO. The server
    * knows the matched-row count (it lands in the Content-Disposition
-   * filename) — fetchBlob exposes it as blob.filename.
+   * filename) — fetchBlob exposes it as blob.filename. A single matched
+   * entry comes back as the raw PDF (application/pdf), not a zip — the
+   * toast follows that shape instead of a count it cannot know here.
    */
   async function runBundle(body: ExportRequest, successMsg: string): Promise<void> {
     setExporting(true);
@@ -169,12 +171,14 @@ export default function EntriesListPage(): JSX.Element {
     try {
       const blob = await entriesApi.bundleDownload(body);
       const date = new Date().toISOString().slice(0, 10);
-      const fallback =
-        body.mode === 'selected'
+      const isSingle = blob.type === 'application/pdf';
+      const fallback = isSingle
+        ? `entries-${date}.pdf`
+        : body.mode === 'selected'
           ? `entries-selected-${body.entryIds?.length ?? 0}-${date}.zip`
           : `entries-filtered-${date}.zip`;
       saveBlob(blob, (blob as { filename?: string }).filename ?? fallback);
-      toast.success(successMsg, { id: progressId });
+      toast.success(isSingle ? t('list.bundleDoneSingle') : successMsg, { id: progressId });
     } catch {
       toast.error(t('list.bundleFailed'), { id: progressId });
     } finally {

@@ -455,6 +455,30 @@ describe('EntriesListPage', () => {
       expect(toast.error).not.toHaveBeenCalled();
     });
 
+    it('count === 1 → toast message is the singular form', async () => {
+      const user = userEvent.setup();
+      // Single matched entry comes back as the raw PDF (application/pdf),
+      // with its {serial}.pdf filename from Content-Disposition.
+      bundleMock.mockResolvedValue(
+        Object.assign(new Blob(['%PDF'], { type: 'application/pdf' }), {
+          filename: '6200000001.pdf',
+        }),
+      );
+      renderList();
+      await waitFor(() => expect(screen.getByText('6200000001')).toBeInTheDocument());
+
+      await user.click(screen.getByLabelText('6200000001'));
+      await user.click(screen.getByRole('button', { name: 'تصدير' }));
+      await user.click(await screen.findByRole('menuitem', { name: 'تنزيل المحدد (1)' }));
+
+      await waitFor(() =>
+        expect(toast.success).toHaveBeenCalledWith('تم تنزيل الملف', {
+          id: 'progress-toast',
+        }),
+      );
+      expect(saveBlob).toHaveBeenCalledWith(expect.any(Blob), '6200000001.pdf');
+    });
+
     it('CSV export still works unchanged', async () => {
       const user = userEvent.setup();
       renderList();

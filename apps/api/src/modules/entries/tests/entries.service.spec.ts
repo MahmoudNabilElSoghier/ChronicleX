@@ -743,14 +743,16 @@ describe('EntriesService', () => {
       ]);
       mockStorage();
 
-      const { stream, count, totalBytes } = await svc.bundleDownload(
+      const { stream, count, totalBytes, single } = await svc.bundleDownload(
         { mode: 'selected', entryIds: ['e1', 'e2'] } as never,
         ACTOR,
       );
 
-      // archiver's Archiver delegates to its own Transform (readable-stream
-      // copy), so a node:stream instanceof check would be a false negative —
-      // what matters is that it is a pipeable/readable stream.
+      // 2+ entries → ZIP path, no single-file shape. archiver's Archiver
+      // delegates to its own Transform (readable-stream copy), so a
+      // node:stream instanceof check would be a false negative — what
+      // matters is that it is a pipeable/readable stream.
+      expect(single).toBeUndefined();
       expect(typeof (stream as { pipe: unknown }).pipe).toBe('function');
       expect(count).toBe(2);
       expect(totalBytes).toBe(2048);
@@ -760,6 +762,56 @@ describe('EntriesService', () => {
       // Central directory stores names uncompressed — both files present.
       expect(zip.toString('latin1')).toContain('6200000000.pdf');
       expect(zip.toString('latin1')).toContain('6200000001.pdf');
+    });
+
+    it('1 matching entry → { count: 1, single: {serial, fileKey} } with the raw PDF stream', async () => {
+      prisma.entry.findMany.mockResolvedValue([bundleRow()]);
+      storage.getObjectStream.mockResolvedValue(Readable.from(['RAW-PDF-CONTENT']));
+
+      const result = await svc.bundleDownload(
+        { mode: 'filtered', filters: {} as never } as never,
+        ACTOR,
+      );
+
+      expect(result.count).toBe(1);
+      expect(result.totalBytes).toBe(1024);
+      expect(result.single).toEqual({
+        serial: '6200000000',
+        fileKey: '2000/REHAB/2025/6200000000.pdf',
+      });
+      expect(storage.getObjectStream).toHaveBeenCalledTimes(1);
+      // Raw object bytes — no zip container around them.
+      const chunks: Buffer[] = [];
+      for await (const c of result.stream) chunks.push(Buffer.from(c));
+      const bytes = Buffer.concat(chunks).toString('utf8');
+      expect(bytes).toBe('RAW-PDF-CONTENT');
+      expect(bytes.startsWith('PK')).toBe(false);
+      // Audit records which shape was sent.
+      expect(prisma.auditLog.create.mock.calls[0][0].data.newValues).toEqual(
+        expect.objectContaining({
+          event: 'BUNDLE_DOWNLOAD',
+          single: true,
+          bundle: false,
+          count: 1,
+        }),
+      );
+    });
+
+    it("mode='selected' with a single id → same single shape", async () => {
+      prisma.entry.findMany.mockResolvedValue([bundleRow()]);
+      storage.getObjectStream.mockResolvedValue(Readable.from(['RAW']));
+
+      const result = await svc.bundleDownload(
+        { mode: 'selected', entryIds: ['e1'] } as never,
+        ACTOR,
+      );
+
+      expect(result.count).toBe(1);
+      expect(result.single).toEqual({
+        serial: '6200000000',
+        fileKey: '2000/REHAB/2025/6200000000.pdf',
+      });
+      expect(result.stream).toBeDefined();
     });
 
     it('bundle respects scope: PROJECT_ADMIN sees only own project entries', async () => {
@@ -872,6 +924,7 @@ describe('EntriesService', () => {
             newValues: expect.objectContaining({
               event: 'BUNDLE_DOWNLOAD',
               bundle: true,
+              single: false,
               mode: 'selected',
               count: 2,
               totalBytes: 3072,

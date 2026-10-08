@@ -113,6 +113,32 @@ describe('EntriesController bundle-download routing', () => {
     await waitForBytes(out.chunks, 'zip-bytes');
     expect(Buffer.concat(out.chunks).toString('utf8')).toContain('zip-bytes');
   });
+
+  it('count === 1 → raw PDF: application/pdf with filename="{serial}.pdf" (no zip)', async () => {
+    entries.bundleDownload.mockResolvedValue({
+      stream: Readable.from(['pdf-bytes']),
+      count: 1,
+      totalBytes: 1024,
+      single: { serial: '6200000007', fileKey: '2000/REHAB/2025/6200000007.pdf' },
+    });
+    const out = fakeRes();
+
+    await controller.bundleDownload(
+      { mode: 'selected', entryIds: ['e9'] } as never,
+      req as never,
+      user as never,
+      '1.2.3.4',
+      'ua',
+      out.res as never,
+    );
+
+    expect(out.headers['Content-Type']).toBe('application/pdf');
+    expect(out.headers['Content-Disposition']).toBe('attachment; filename="6200000007.pdf"');
+    expect(out.headers['Transfer-Encoding']).toBe('chunked');
+    expect(out.headers['Access-Control-Allow-Origin']).toBe('http://localhost:3000');
+    await waitForBytes(out.chunks, 'pdf-bytes');
+    expect(Buffer.concat(out.chunks).toString('utf8')).toContain('pdf-bytes');
+  });
 });
 
 /** POST /entries/export stays the pure CSV stream — PDF branching is gone. */

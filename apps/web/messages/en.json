@@ -75,6 +75,7 @@
       "bundleFiltered": "Download by current filters",
       "bundleProgress": "Preparing files...",
       "bundleDoneSelected": "Downloaded {count} files",
+      "bundleDoneSingle": "File downloaded",
       "bundleDoneFiltered": "Downloaded files matching the filters",
       "bundleFailed": "Could not download files, try again"
     },
