@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ar from '@/messages/ar.json';
 import UploadPage from '@/app/[locale]/(authenticated)/upload/page';
 import { uploadApi } from '@/lib/api/entries';
+import { ActiveJobsProvider, useActiveJobs } from '@/lib/upload/active-jobs-context';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -74,9 +75,48 @@ function renderUpload(): void {
   );
 }
 
+/** The visible tab panel — hidden panels are aria-hidden → excluded by role queries. */
+function activePanel(): HTMLElement {
+  return screen.getByRole('tabpanel');
+}
+
+function activeFileInput(): HTMLInputElement {
+  const input = activePanel().querySelector('input[type="file"]');
+  if (!input) throw new Error('no file input in the active tab panel');
+  return input as HTMLInputElement;
+}
+
 async function chooseFiles(files: File[]): Promise<void> {
-  const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-  fireEvent.change(input, { target: { files } });
+  fireEvent.change(activeFileInput(), { target: { files } });
+}
+
+function renderUploadWithBadge(): void {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <NuqsTestingAdapter hasMemory>
+      <QueryClientProvider client={client}>
+        <NextIntlClientProvider locale="ar" messages={ar}>
+          <ActiveJobsProvider>
+            <BadgeProbe />
+            <UploadPage />
+          </ActiveJobsProvider>
+        </NextIntlClientProvider>
+      </QueryClientProvider>
+    </NuqsTestingAdapter>,
+  );
+}
+
+/** Stand-in for the sidebar Upload badge (reads the same context). */
+function BadgeProbe(): JSX.Element {
+  const activeJobs = useActiveJobs();
+  return (
+    <div>
+      <span data-testid="active-badge">{activeJobs?.jobs.length ?? 0}</span>
+      <button type="button" onClick={() => activeJobs?.track('job-1')}>
+        track
+      </button>
+    </div>
+  );
 }
 
 async function fillScope(): Promise<void> {
@@ -251,7 +291,11 @@ describe('UploadPage single tab', () => {
 
     const user = userEvent.setup();
     await user.click(screen.getByRole('tab', { name: /رفع متعدد/ }));
-    expect(screen.queryByText('6200000000.pdf')).not.toBeInTheDocument();
+    // still mounted (state survives) but hidden from view + assistive tech
+    expect(screen.getByText('6200000000.pdf')).toBeInTheDocument();
+    const hiddenPanel = screen.getByText('6200000000.pdf').closest('[role="tabpanel"]');
+    expect(hiddenPanel).toHaveAttribute('aria-hidden', 'true');
+    expect(hiddenPanel).toHaveAttribute('inert');
 
     await user.click(screen.getByRole('tab', { name: /قيد واحد/ }));
     // file and scope come back from page state, no re-selection needed
@@ -328,10 +372,8 @@ describe('UploadPage bulk tab', () => {
     renderUpload();
     const user = userEvent.setup();
     await user.click(screen.getByRole('tab', { name: /رفع متعدد/ }));
-    await waitFor(() =>
-      expect(document.querySelectorAll('input[type="file"]')).toHaveLength(1),
-    );
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await waitFor(() => expect(activeFileInput()).toBeInTheDocument());
+    const input = activeFileInput();
     fireEvent.change(input, { target: { files: [pdf('6200000000.pdf'), pdf('bad.pdf'), pdf('6300000001.pdf')] } });
     await waitFor(() =>
       expect(screen.getByText(/0 صالح، 1 خطأ، 2 بانتظار التحقق/)).toBeInTheDocument(),
@@ -377,9 +419,7 @@ describe('UploadPage bulk tab', () => {
 
     // "Start new batch" clears the queue AND the persisted key.
     fireEvent.click(screen.getByRole('button', { name: /بدء دفعة جديدة/ }));
-    await waitFor(() =>
-      expect(document.querySelector('input[type="file"]')).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(activeFileInput()).toBeInTheDocument());
     expect(sessionStorage.getItem('bulk-upload:last')).toBeNull();
   });
 
@@ -397,10 +437,8 @@ describe('UploadPage bulk tab', () => {
     renderUpload();
     const user = userEvent.setup();
     await user.click(screen.getByRole('tab', { name: /رفع متعدد/ }));
-    await waitFor(() =>
-      expect(document.querySelectorAll('input[type="file"]')).toHaveLength(1),
-    );
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await waitFor(() => expect(activeFileInput()).toBeInTheDocument());
+    const input = activeFileInput();
     fireEvent.change(input, { target: { files } });
     await waitFor(() =>
       expect(screen.getByText(/0 صالح، 0 خطأ، 25 بانتظار التحقق/)).toBeInTheDocument(),
@@ -444,10 +482,8 @@ describe('UploadPage bulk tab', () => {
     renderUpload();
     const user = userEvent.setup();
     await user.click(screen.getByRole('tab', { name: /رفع متعدد/ }));
-    await waitFor(() =>
-      expect(document.querySelectorAll('input[type="file"]')).toHaveLength(1),
-    );
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await waitFor(() => expect(activeFileInput()).toBeInTheDocument());
+    const input = activeFileInput();
     fireEvent.change(input, {
       target: { files: [pdf('6200000000.pdf'), pdf('6200000001.pdf'), pdf('6300000002.pdf')] },
     });
@@ -485,10 +521,8 @@ describe('UploadPage bulk tab', () => {
     renderUpload();
     const user = userEvent.setup();
     await user.click(screen.getByRole('tab', { name: /رفع متعدد/ }));
-    await waitFor(() =>
-      expect(document.querySelectorAll('input[type="file"]')).toHaveLength(1),
-    );
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await waitFor(() => expect(activeFileInput()).toBeInTheDocument());
+    const input = activeFileInput();
     fireEvent.change(input, { target: { files: [pdf('6200000000.pdf')] } });
     await fillScope();
 
@@ -504,5 +538,90 @@ describe('UploadPage bulk tab', () => {
     const link = screen.getByRole('link', { name: 'عرض القيد الأصلي' });
     expect(link).toHaveAttribute('href', '/ar/entries/e9');
     expect(link).toHaveAttribute('target', '_blank');
+  });
+});
+
+describe('UploadPage tab persistence', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessionStorage.clear();
+  });
+
+  it('bulk queue (files + scope + check states) survives switching to the single tab and back', async () => {
+    const { uploadApi: api } = await import('@/lib/api/entries');
+    vi.mocked(api.preview).mockResolvedValue({
+      results: [{ index: 0, status: 'ok' }, { index: 1, status: 'ok' }, { index: 2, status: 'ok' }],
+    });
+    renderUpload();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('tab', { name: /رفع متعدد/ }));
+    await waitFor(() => expect(activeFileInput()).toBeInTheDocument());
+    fireEvent.change(activeFileInput(), {
+      target: { files: [pdf('6200000000.pdf'), pdf('bad.pdf'), pdf('6300000001.pdf')] },
+    });
+    await fillScope();
+    await waitFor(() => expect(screen.getByText('2 صالح، 1 خطأ')).toBeInTheDocument(), {
+      timeout: 3000,
+    });
+
+    await user.click(screen.getByRole('tab', { name: /قيد واحد/ }));
+    await user.click(screen.getByRole('tab', { name: /رفع متعدد/ }));
+
+    // same files, same check results, same scope — nothing was destroyed
+    expect(screen.getByText('6200000000.pdf')).toBeInTheDocument();
+    expect(screen.getByText('bad.pdf')).toBeInTheDocument();
+    expect(screen.getByText('6300000001.pdf')).toBeInTheDocument();
+    expect(screen.getByText('2 صالح، 1 خطأ')).toBeInTheDocument();
+    const selects = screen.getAllByRole('combobox') as HTMLSelectElement[];
+    expect(selects[0]?.value).toBe('c1');
+    expect(selects[1]?.value).toBe('p1');
+    expect(
+      (screen.getByPlaceholderText(String(new Date().getFullYear())) as HTMLInputElement).value,
+    ).toBe('2025');
+    // the round-trip did not re-trigger a preview (no remount → effect deps unchanged)
+    expect(api.preview).toHaveBeenCalledTimes(1);
+  });
+
+  it('hidden tabs fire no preview while empty; a hidden tab with files still checks', async () => {
+    const { uploadApi: api } = await import('@/lib/api/entries');
+    vi.mocked(api.preview).mockResolvedValue({ results: [{ index: 0, status: 'ok' }] });
+    renderUpload();
+    // both tabs are mounted from the start, neither has files → nothing fires
+    await new Promise((r) => setTimeout(r, 600));
+    expect(api.preview).not.toHaveBeenCalled();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('tab', { name: /رفع متعدد/ }));
+    fireEvent.change(activeFileInput(), { target: { files: [pdf('6200000000.pdf')] } });
+    await fillScope();
+    // leave before the 400ms debounce lands — the hidden panel still converges
+    await user.click(screen.getByRole('tab', { name: /قيد واحد/ }));
+    await new Promise((r) => setTimeout(r, 600));
+    // exactly one call: bulk (hidden) checked, single (visible, empty) stayed silent
+    expect(api.preview).toHaveBeenCalledTimes(1);
+  });
+
+  it('sidebar badge count does not change on tab switch', async () => {
+    const { uploadApi: api } = await import('@/lib/api/entries');
+    vi.mocked(api.bulkStatus).mockResolvedValue({
+      jobId: 'job-1',
+      status: 'processing',
+      total: 1,
+      processed: 0,
+      succeeded: 0,
+      failed: 0,
+      createdAt: new Date().toISOString(),
+      results: [],
+      resultsTruncated: false,
+    });
+    renderUploadWithBadge();
+    fireEvent.click(screen.getByRole('button', { name: 'track' }));
+    await waitFor(() => expect(screen.getByTestId('active-badge')).toHaveTextContent('1'));
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('tab', { name: /رفع متعدد/ }));
+    expect(screen.getByTestId('active-badge')).toHaveTextContent('1');
+    await user.click(screen.getByRole('tab', { name: /قيد واحد/ }));
+    expect(screen.getByTestId('active-badge')).toHaveTextContent('1');
   });
 });
