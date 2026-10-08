@@ -3,7 +3,7 @@
 import { useRouter } from '@/lib/navigation';
 import { useTranslations } from 'next-intl';
 import * as React from 'react';
-import { CheckCircle2, XCircle } from 'lucide-react';
+import { CheckCircle2, Clock, Loader2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -14,16 +14,76 @@ import { ScopeSelectors } from '@/components/upload/scope-selectors';
 import { formatBytes } from '@/lib/format';
 import { useUploadQueue } from '@/lib/upload/use-upload-queue';
 
+/**
+ * Single-entry badge state mirrors the queue's check machine (the same
+ * machine the bulk tab renders): the filename parse alone must never
+ * show a green "valid" for a known duplicate.
+ */
+type SingleStatus =
+  | 'idle'
+  | 'pending_scope'
+  | 'pending_check'
+  | 'valid'
+  | 'invalid'
+  | 'deferred';
+
 export function SingleTab(): JSX.Element {
   const t = useTranslations('upload');
   const router = useRouter();
-  const queue = useUploadQueue();
   const [scope, setScope] = React.useState({ companyId: '', projectId: '', year: '' });
+  // Scope is passed through so the queue runs the same pre-flight preview
+  // the bulk tab uses (1-element array).
+  const queue = useUploadQueue(scope);
 
   const item = queue.items[0];
   const scopeValid =
     scope.companyId !== '' && scope.projectId !== '' && /^\d{4}$/.test(scope.year);
-  const canSubmit = item !== undefined && item.parse.ok && scopeValid && !queue.isSubmitting;
+
+  function computeStatus(): SingleStatus {
+    if (!item) return 'idle';
+    if (item.status === 'failed') return 'invalid';
+    if (!item.parse.ok) return 'invalid';
+    switch (item.check) {
+      case 'valid':
+        return 'valid';
+      case 'invalid':
+        return 'invalid';
+      case 'deferred':
+        return 'deferred';
+      case 'pending_check':
+        return 'pending_check';
+      default:
+        return 'pending_scope';
+    }
+  }
+  const status = computeStatus();
+
+  const dupRejected =
+    item?.errorCode === 'DUPLICATE_SERIAL' || item?.errorCode === 'DUPLICATE_FILE';
+  // A transient failure (network/5xx) may be retried; a duplicate never can.
+  const retryable =
+    item !== undefined &&
+    item.status === 'failed' &&
+    !dupRejected &&
+    item.check !== 'invalid';
+  const canSubmit =
+    item !== undefined &&
+    scopeValid &&
+    !queue.isSubmitting &&
+    (status === 'valid' || status === 'deferred' || retryable);
+
+  function reasonText(): string {
+    if (!item) return '';
+    if (item.checkReason === 'duplicate_serial' || item.errorCode === 'DUPLICATE_SERIAL') {
+      return t('conflicts.duplicateSerial');
+    }
+    if (item.checkReason === 'duplicate_hash' || item.errorCode === 'DUPLICATE_FILE') {
+      return t('conflicts.duplicateFile');
+    }
+    if (!item.parse.ok) return t(`errors.${item.parse.code}`);
+    if (item.status === 'failed') return t('single.failed');
+    return t('bulk.invalidFilename');
+  }
 
   async function submit(): Promise<void> {
     if (!canSubmit || !item) return;
@@ -82,15 +142,30 @@ export function SingleTab(): JSX.Element {
                 {t('single.remove')}
               </Button>
             </div>
-            {item.parse.ok ? (
+            {status === 'idle' ? null : status === 'valid' ? (
               <p className="flex items-center gap-2 text-sm text-green-700">
                 <CheckCircle2 className="h-4 w-4" />
-                {t('single.valid', { serial: item.parse.serial })}
+                {t('single.valid')}
               </p>
-            ) : (
+            ) : status === 'invalid' ? (
               <p className="flex items-center gap-2 text-sm text-destructive">
                 <XCircle className="h-4 w-4" />
-                {t(`errors.${item.parse.code}`)}
+                {`✗ ${reasonText()}`}
+              </p>
+            ) : status === 'pending_check' ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t('single.checkingDup')}
+              </p>
+            ) : status === 'deferred' ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Clock className="h-4 w-4" />
+                {t('bulk.deferred')}
+              </p>
+            ) : (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Clock className="h-4 w-4" />
+                {t('bulk.pendingScope')}
               </p>
             )}
             <ScopeSelectors value={scope} onChange={setScope} disabled={queue.isSubmitting} />
@@ -102,24 +177,20 @@ export function SingleTab(): JSX.Element {
                 />
               </div>
             ) : null}
-            {item.status === 'failed' ? (
-              (item.errorCode === 'DUPLICATE_SERIAL' || item.errorCode === 'DUPLICATE_FILE') &&
-              item.existingEntryId ? (
-                item.existing ? (
-                  <DuplicateDetails existing={item.existing} entryId={item.existingEntryId} />
-                ) : (
-                  <div className="space-y-3 rounded-md border p-3">
-                    <p className="text-sm font-medium text-destructive">
-                      {item.errorCode === 'DUPLICATE_SERIAL'
-                        ? t('conflicts.duplicateSerial')
-                        : t('conflicts.duplicateFile')}
-                    </p>
-                    <ExistingEntryCard entryId={item.existingEntryId} />
-                  </div>
-                )
-              ) : (
-                <p className="text-sm text-destructive">{item.errorMessage ?? item.errorCode}</p>
-              )
+            {item.existingEntryId && item.existing ? (
+              <DuplicateDetails existing={item.existing} entryId={item.existingEntryId} />
+            ) : item.existingEntryId &&
+              (item.check === 'invalid' || item.status === 'failed') ? (
+              <div className="space-y-3 rounded-md border p-3">
+                <p className="text-sm font-medium text-destructive">
+                  {item.errorCode === 'DUPLICATE_FILE' || item.checkReason === 'duplicate_hash'
+                    ? t('conflicts.duplicateFile')
+                    : t('conflicts.duplicateSerial')}
+                </p>
+                <ExistingEntryCard entryId={item.existingEntryId} />
+              </div>
+            ) : item.status === 'failed' ? (
+              <p className="text-sm text-destructive">{item.errorMessage ?? item.errorCode}</p>
             ) : null}
             <Button onClick={() => void submit()} disabled={!canSubmit} className="w-full">
               {t('single.submit')}

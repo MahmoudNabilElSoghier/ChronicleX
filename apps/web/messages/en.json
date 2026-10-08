@@ -172,7 +172,8 @@
       "failed": "Upload failed",
       "success": "Entry uploaded successfully",
       "viewEntry": "View entry",
-      "uploadAnother": "Upload another file"
+      "uploadAnother": "Upload another file",
+      "checkingDup": "Checking duplicates..."
     },
     "bulk": {
       "summary": "{valid} valid, {invalid} invalid",

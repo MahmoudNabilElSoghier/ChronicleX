@@ -18,8 +18,8 @@ export type UploadItemStatus = 'pending' | 'uploading' | 'queued' | 'done' | 'fa
  * - pending_scope: filename parses, but scope (company/project/year) is not
  *   chosen yet — uniqueness cannot be known without it.
  * - pending_check: scope chosen, pre-flight request in flight.
- * - deferred: batch is over HASH_CAP — client hashing/preview skipped to
- *   keep drop instant; the server validates duplicates during upload.
+ * - deferred: batch is over HASH_CAP (hashing/preview skipped) or the
+ *   preview request failed — server-side validation at upload time.
  * - valid: server pre-flight confirmed no conflicts.
  * - invalid: bad filename, duplicate serial or duplicate hash (reason).
  */
@@ -262,8 +262,19 @@ export function useUploadQueue(scope?: QueueScope): {
           }),
         );
       } catch {
-        // Pre-flight unavailable — rows stay pending_check; the server
-        // still validates every file at submit time.
+        // Pre-flight unavailable — rows fall back to 'deferred' instead of
+        // staying blocked: the server still validates every file at submit
+        // time. Stale responses (seq mismatch) are dropped entirely.
+        if (seq !== seqRef.current) return;
+        setItems((prev) =>
+          prev.some((i) => i.parse.ok && i.check === 'pending_check')
+            ? prev.map((i) =>
+                i.parse.ok && i.check === 'pending_check'
+                  ? { ...i, check: 'deferred' as const }
+                  : i,
+              )
+            : prev,
+        );
       }
     },
     [],

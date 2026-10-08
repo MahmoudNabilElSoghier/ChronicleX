@@ -107,10 +107,18 @@ describe('UploadPage single tab', () => {
 
   it('valid file enables submit; success shows the entry link', async () => {
     singleMock.mockResolvedValue({ id: 'e1' });
+    const { uploadApi: api } = await import('@/lib/api/entries');
+    vi.mocked(api.preview).mockResolvedValue({ results: [{ index: 0, status: 'ok' }] });
     renderUpload();
     await chooseFiles([pdf('6200000000.pdf')]);
-    await waitFor(() => expect(screen.getByText(/ملف صالح/)).toBeInTheDocument());
+    // parse ok but scope missing → the badge reflects the check machine
+    await waitFor(() =>
+      expect(screen.getByText('بانتظار اختيار النطاق')).toBeInTheDocument(),
+    );
     await fillScope();
+    await waitFor(() => expect(screen.getByText(/ملف صالح/)).toBeInTheDocument(), {
+      timeout: 3000,
+    });
     const submit = screen.getByRole('button', { name: /رفع القيد/ });
     expect(submit).toBeEnabled();
     fireEvent.click(submit);
@@ -133,7 +141,8 @@ describe('UploadPage single tab', () => {
     singleMock.mockRejectedValue(
       new ApiError(409, 'DUPLICATE_SERIAL', 'Serial already exists', { existingEntryId: 'e9' }),
     );
-    const { entriesApi: fullApi } = await import('@/lib/api/entries');
+    const { entriesApi: fullApi, uploadApi: api } = await import('@/lib/api/entries');
+    vi.mocked(api.preview).mockResolvedValue({ results: [{ index: 0, status: 'ok' }] });
     vi.mocked(fullApi.get).mockResolvedValue({
       id: 'e9',
       serial: '6200000000',
@@ -144,15 +153,90 @@ describe('UploadPage single tab', () => {
     });
     renderUpload();
     await chooseFiles([pdf('6200000000.pdf')]);
-    await waitFor(() => expect(screen.getByText(/ملف صالح/)).toBeInTheDocument());
-    await fillScope();
-    fireEvent.click(screen.getByRole('button', { name: /رفع القيد/ }));
     await waitFor(() =>
-      expect(screen.getByText(/الرقم التسلسلي مستخدم بالفعل/)).toBeInTheDocument(),
+      expect(screen.getByText('بانتظار اختيار النطاق')).toBeInTheDocument(),
+    );
+    await fillScope();
+    await waitFor(() => expect(screen.getByText(/ملف صالح/)).toBeInTheDocument(), {
+      timeout: 3000,
+    });
+    fireEvent.click(screen.getByRole('button', { name: /رفع القيد/ }));
+    // the reason now appears twice: in the status badge and in the legacy
+    // conflict card (which is the no-summary fallback)
+    await waitFor(() =>
+      expect(screen.getAllByText(/الرقم التسلسلي مستخدم بالفعل/).length).toBeGreaterThan(0),
     );
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /عرض القيد الموجود/ })).toBeInTheDocument(),
     );
+    expect(screen.getByRole('button', { name: /رفع القيد/ })).toBeDisabled();
+  });
+
+  it('preview ok → valid badge shown and upload enabled', async () => {
+    const { uploadApi: api } = await import('@/lib/api/entries');
+    vi.mocked(api.preview).mockResolvedValue({ results: [{ index: 0, status: 'ok' }] });
+    renderUpload();
+    await chooseFiles([pdf('6200000000.pdf')]);
+    await fillScope();
+    await waitFor(() => expect(screen.getByText('✓ ملف صالح')).toBeInTheDocument(), {
+      timeout: 3000,
+    });
+    expect(screen.getByRole('button', { name: /رفع القيد/ })).toBeEnabled();
+  });
+
+  it('preview duplicate_hash → already-uploaded badge, DuplicateDetails visible, upload disabled', async () => {
+    const { uploadApi: api } = await import('@/lib/api/entries');
+    vi.mocked(api.preview).mockResolvedValue({
+      results: [
+        {
+          index: 0,
+          status: 'duplicate_hash',
+          existingEntryId: 'e9',
+          existing: {
+            serial: '6200000000',
+            year: 2026,
+            company: { nameAr: 'شركة الاسكندرية', nameEn: 'Alexandria', code: 9205 },
+            project: { nameAr: 'سان ستيفانو العقارية', nameEn: 'San Stefano', code: 'SSRE' },
+            uploadedBy: { nameAr: 'مدير النظام', nameEn: 'System Administrator' },
+            createdAt: '2025-03-01T10:00:00.000Z',
+          },
+        },
+      ],
+    });
+    renderUpload();
+    await chooseFiles([pdf('6200000000.pdf')]);
+    await fillScope();
+    await waitFor(
+      () => expect(screen.getByText(/هذا الملف مرفوع بالفعل/)).toBeInTheDocument(),
+      { timeout: 3000 },
+    );
+    // the green "valid" badge must be gone — never two contradictory states
+    expect(screen.queryByText(/ملف صالح/)).not.toBeInTheDocument();
+    expect(screen.getByText('الملف مرفوع قبل كده')).toBeInTheDocument();
+    expect(screen.getByText(/القيد الأصلي: 6200000000/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /رفع القيد/ })).toBeDisabled();
+  });
+
+  it('preview in flight → checking badge and upload disabled', async () => {
+    const { uploadApi: api } = await import('@/lib/api/entries');
+    vi.mocked(api.preview).mockImplementation(() => new Promise<never>(() => {}));
+    renderUpload();
+    await chooseFiles([pdf('6200000000.pdf')]);
+    await fillScope();
+    expect(screen.getByText('جاري التحقق من التكرار...')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /رفع القيد/ })).toBeDisabled();
+  });
+
+  it('preview request fails → deferred badge and upload enabled', async () => {
+    const { uploadApi: api } = await import('@/lib/api/entries');
+    vi.mocked(api.preview).mockRejectedValue(new Error('network down'));
+    renderUpload();
+    await chooseFiles([pdf('6200000000.pdf')]);
+    await fillScope();
+    await waitFor(() => expect(screen.getByText('يتم التحقق عند الرفع')).toBeInTheDocument(), {
+      timeout: 3000,
+    });
+    expect(screen.getByRole('button', { name: /رفع القيد/ })).toBeEnabled();
   });
 });
 

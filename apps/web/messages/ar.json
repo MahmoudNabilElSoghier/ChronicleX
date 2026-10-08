@@ -172,7 +172,8 @@
       "failed": "فشل الرفع",
       "success": "تم رفع القيد بنجاح",
       "viewEntry": "عرض القيد",
-      "uploadAnother": "رفع ملف آخر"
+      "uploadAnother": "رفع ملف آخر",
+      "checkingDup": "جاري التحقق من التكرار..."
     },
     "bulk": {
       "summary": "{valid} صالح، {invalid} خطأ",
