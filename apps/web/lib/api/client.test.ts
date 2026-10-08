@@ -67,6 +67,11 @@ describe('ApiClient', () => {
   });
 
   it('fetchBlob exposes the Content-Disposition filename as blob.filename', async () => {
+    // NOTE: this mock cannot catch CORS misconfiguration — the browser only
+    // makes Content-Disposition readable if the API lists it in
+    // Access-Control-Expose-Headers (main.ts / cors-headers.ts). Unit tests
+    // skip that layer entirely; only a real-browser E2E run would surface a
+    // missing exposure (it manifests as a generic entries-{date} filename).
     globalThis.fetch = vi.fn().mockResolvedValueOnce({
       ok: true,
       status: 200,

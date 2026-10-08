@@ -20,7 +20,7 @@ async function bootstrap(): Promise<void> {
     credentials: true,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-    exposedHeaders: ['Content-Length', 'Content-Range', 'Accept-Ranges'],
+    exposedHeaders: ['Content-Length', 'Content-Range', 'Accept-Ranges', 'Content-Disposition'],
     maxAge: 86400,
   });
   const port = Number(process.env.API_PORT ?? 3001);

@@ -32,9 +32,12 @@ describe('cors-headers', () => {
     expect(out.headers['Access-Control-Allow-Origin']).toBe('http://localhost:3000');
     expect(out.headers['Access-Control-Allow-Credentials']).toBe('true');
     expect(out.headers['Vary']).toBe('Origin');
+    // Content-Disposition is part of the allowlist: fetchBlob parses it
+    // for the {serial}.pdf filename (single-file PDF downloads).
     expect(out.headers['Access-Control-Expose-Headers']).toBe(
-      'Content-Length, Content-Range, Accept-Ranges',
+      'Content-Length, Content-Range, Accept-Ranges, Content-Disposition',
     );
+    expect(out.headers['Access-Control-Expose-Headers']).toContain('Content-Disposition');
   });
 
   it('sets nothing for a foreign origin', () => {

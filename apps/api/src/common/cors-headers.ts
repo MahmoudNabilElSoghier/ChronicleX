@@ -27,9 +27,12 @@ export function applyCorsHeaders(
     // Append (not set): compression/ETag middleware may already own Vary.
     res.append('Vary', 'Origin');
     // Parity with main.ts: JS reading these headers must not be surprised.
+    // Content-Disposition carries the {serial}.pdf filename — without it
+    // exposed, fetchBlob cannot read it and downloads fall back to a
+    // generic name.
     res.setHeader(
       'Access-Control-Expose-Headers',
-      'Content-Length, Content-Range, Accept-Ranges',
+      'Content-Length, Content-Range, Accept-Ranges, Content-Disposition',
     );
   }
 }
