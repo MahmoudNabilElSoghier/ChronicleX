@@ -50,6 +50,22 @@ export interface QueueScope {
   year: string;
 }
 
+/**
+ * Effective row states for the summary bar — derived from the check
+ * machine (NOT from filename parsing), so it can never contradict what
+ * the rows show after a pre-flight run.
+ */
+export interface CheckCounts {
+  /** check === 'valid' */
+  valid: number;
+  /** check === 'invalid' (bad name, duplicate serial/hash) */
+  invalid: number;
+  /** check === 'pending_scope' | 'pending_check' — not yet checked */
+  pending: number;
+  /** check === 'deferred' — large batch, validated at upload */
+  deferred: number;
+}
+
 export const LAST_BATCH_KEY = 'bulk-upload:last';
 /**
  * Max files we hash + pre-flight client-side. Hashing N large PDFs on the
@@ -126,6 +142,10 @@ export function useUploadQueue(scope?: QueueScope): {
   retryItem: (id: string) => void;
   totalValid: number;
   totalInvalid: number;
+  /** rows that would actually be sent (parse ok, not flagged invalid) */
+  submittable: number;
+  /** summary-bar counts, derived from the check state */
+  checkCounts: CheckCounts;
   submit: (params: SubmitParams) => Promise<void>;
   jobId: string | null;
   jobStatus: BulkStatus | undefined;
@@ -388,11 +408,32 @@ export function useUploadQueue(scope?: QueueScope): {
     [items, patch],
   );
 
+  // Filename diagnostics (parse-based) — kept for tests/dropzone hints.
   const totalValid = items.filter((i) => i.parse.ok).length;
   const totalInvalid = items.length - totalValid;
+  // What submit() would actually send: excludes rows the pre-flight
+  // flagged as duplicates (submit filters the same way).
+  const submittable = items.filter(
+    (i) =>
+      i.parse.ok &&
+      i.check !== 'invalid' &&
+      (i.status === 'pending' || i.status === 'failed'),
+  ).length;
+  const checkCounts: CheckCounts = React.useMemo(
+    () => ({
+      valid: items.filter((i) => i.check === 'valid').length,
+      invalid: items.filter((i) => i.check === 'invalid').length,
+      pending: items.filter(
+        (i) => i.check === 'pending_scope' || i.check === 'pending_check',
+      ).length,
+      deferred: items.filter((i) => i.check === 'deferred').length,
+    }),
+    [items],
+  );
 
   return {
     items, addFiles, removeItem, clear, retryItem,
-    totalValid, totalInvalid, submit, jobId, jobStatus, isSubmitting,
+    totalValid, totalInvalid, submittable, checkCounts,
+    submit, jobId, jobStatus, isSubmitting,
   };
 }

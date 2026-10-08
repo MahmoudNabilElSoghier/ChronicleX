@@ -179,7 +179,9 @@ describe('UploadPage bulk tab', () => {
     );
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [pdf('6200000000.pdf'), pdf('bad.pdf'), pdf('6300000001.pdf')] } });
-    await waitFor(() => expect(screen.getByText(/2 صالح، 1 خطأ/)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText(/0 صالح، 1 خطأ، 2 بانتظار التحقق/)).toBeInTheDocument(),
+    );
     await fillScope();
     const submit = screen.getByRole('button', { name: /رفع الكل/ });
     expect(submit).toBeEnabled();
@@ -246,7 +248,9 @@ describe('UploadPage bulk tab', () => {
     );
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files } });
-    await waitFor(() => expect(screen.getByText(/25 صالح، 0 خطأ/)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText(/0 صالح، 0 خطأ، 25 بانتظار التحقق/)).toBeInTheDocument(),
+    );
     await fillScope();
 
     await waitFor(() =>
@@ -272,5 +276,34 @@ describe('UploadPage bulk tab', () => {
     fireEvent.click(screen.getByRole('button', { name: /رفع الكل/ }));
     await waitFor(() => expect(bulkLocal).toHaveBeenCalledTimes(1));
     expect((bulkLocal.mock.calls[0]?.[0] as FormData).getAll('files')).toHaveLength(25);
+  });
+
+  it('summary reflects preview results: 2 duplicates + 1 new → "1 صالح، 2 خطأ"', async () => {
+    const { uploadApi: api } = await import('@/lib/api/entries');
+    vi.mocked(api.preview).mockResolvedValue({
+      results: [
+        { index: 0, status: 'ok' },
+        { index: 1, status: 'duplicate_hash', existingEntryId: 'e9' },
+        { index: 2, status: 'duplicate_hash', existingEntryId: 'e9' },
+      ],
+    });
+    renderUpload();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('tab', { name: /رفع متعدد/ }));
+    await waitFor(() =>
+      expect(document.querySelectorAll('input[type="file"]')).toHaveLength(1),
+    );
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { files: [pdf('6200000000.pdf'), pdf('6200000001.pdf'), pdf('6300000002.pdf')] },
+    });
+    await fillScope();
+
+    await waitFor(() => expect(screen.getByText('1 صالح، 2 خطأ')).toBeInTheDocument(), {
+      timeout: 3000,
+    });
+    // pending portion hidden at zero, rows agree with the counts
+    expect(screen.queryByText(/بانتظار التحقق/)).not.toBeInTheDocument();
+    expect(screen.getAllByText('هذا الملف مرفوع بالفعل')).toHaveLength(2);
   });
 });

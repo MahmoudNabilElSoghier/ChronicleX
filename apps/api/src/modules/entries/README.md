@@ -39,3 +39,17 @@ Upload, listing, streaming, audit and bulk-upload of TMG archive entries (PDFs).
   not streamable while deleted (restore re-enables them).
 - **Audit**: immutable `AuditLog` rows (DB trigger enforces no UPDATE/
   DELETE). Uploads are audited by the interceptor, not the service.
+
+## Serial uniqueness — domain rule (unconfirmed)
+
+Same serial may repeat across different years. Within the same year,
+serials are unique system-wide (single shared SAP instance). Current
+implementation scopes uniqueness to (companyId, year, serial) — this is
+more permissive than the domain rule and will be tightened after
+stakeholder confirmation.
+
+Note: the file-hash check is intentionally **global** (all years, all
+companies) and independent of the serial rule — the hash answers "is this
+exact physical document already in the system?", the serial answers "does
+this entry number already exist this year?". Do not scope the hash check
+to a year or company.

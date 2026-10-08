@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import ar from '@/messages/ar.json';
 import { type QueueScope, LAST_BATCH_KEY, useUploadQueue } from './use-upload-queue';
 
 vi.mock('@/lib/api/entries', () => ({
@@ -171,6 +172,44 @@ describe('useUploadQueue', () => {
       }),
     );
     expect(result.current.items.every((i) => i.check === 'valid')).toBe(true);
+  });
+
+  it('3 files: preview flags 2 duplicate_hash → summary counts 1 valid, 2 invalid', async () => {
+    previewMock.mockResolvedValue({
+      results: [
+        { index: 0, status: 'ok' },
+        { index: 1, status: 'duplicate_hash', existingEntryId: 'e1' },
+        { index: 2, status: 'duplicate_hash', existingEntryId: 'e2' },
+      ],
+    });
+    vi.useFakeTimers();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: React.ReactNode }): JSX.Element => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useUploadQueue(SCOPE), { wrapper });
+
+    act(() => {
+      result.current.addFiles([
+        pdf('6200000000.pdf'),
+        pdf('6200000001.pdf'),
+        pdf('6300000002.pdf'),
+      ]);
+    });
+    await flushPreview();
+
+    expect(result.current.checkCounts).toEqual({
+      valid: 1,
+      invalid: 2,
+      pending: 0,
+      deferred: 0,
+    });
+    expect(result.current.submittable).toBe(1);
+    // the summary bar composes exactly this from the ar message + counts
+    const summaryText = ar.upload.bulk.summary
+      .replace('{valid}', String(result.current.checkCounts.valid))
+      .replace('{invalid}', String(result.current.checkCounts.invalid));
+    expect(summaryText).toBe('1 صالح، 2 خطأ');
   });
 
   it('preview duplicate_serial marks the row invalid and submit skips it', async () => {

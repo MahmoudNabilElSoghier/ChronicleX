@@ -29,8 +29,23 @@ export function BulkTab(): JSX.Element {
 
   const scopeValid =
     scope.companyId !== '' && scope.projectId !== '' && /^\d{4}$/.test(scope.year);
-  const canSubmit = queue.totalValid > 0 && scopeValid && !queue.isSubmitting && queue.jobId === null;
+  const canSubmit = queue.submittable > 0 && scopeValid && !queue.isSubmitting && queue.jobId === null;
   const overCap = queue.items.length > HASH_CAP;
+
+  // Summary mirrors the effective row states (check machine), never the
+  // filename parse: pending rows add a third count, deferred batches the
+  // "(checked at upload)" suffix — both hidden at zero.
+  const counts = queue.checkCounts;
+  const summaryText =
+    counts.deferred > 0
+      ? t('bulk.summaryDeferred', { valid: counts.valid, invalid: counts.invalid })
+      : counts.pending > 0
+        ? t('bulk.summaryPending', {
+            valid: counts.valid,
+            invalid: counts.invalid,
+            pending: counts.pending,
+          })
+        : t('bulk.summary', { valid: counts.valid, invalid: counts.invalid });
 
   const resultsByName = React.useMemo(() => {
     const map = new Map<string, BulkResult[]>();
@@ -98,9 +113,7 @@ export function BulkTab(): JSX.Element {
             <Card>
               <CardContent className="space-y-3 p-4">
                 <div className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
-                  <span>
-                    {t('bulk.summary', { valid: queue.totalValid, invalid: queue.totalInvalid })}
-                  </span>
+                  <span>{summaryText}</span>
                   {overCap ? (
                     <span
                       className="inline-flex cursor-help items-center"
