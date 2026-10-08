@@ -1,17 +1,32 @@
 ﻿'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import type { RowSelectionState } from '@tanstack/react-table';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from '@/lib/navigation';
 import { parseAsInteger, parseAsString, useQueryStates } from 'nuqs';
 import * as React from 'react';
 import { toast } from 'sonner';
+import { ChevronDown, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { EntriesTable, TableSkeleton, type RowActions } from '@/components/entries/entries-table';
-import { catalogApi, entriesApi, type EntriesFilters, type EntryListItem } from '@/lib/api/entries';
+import {
+  catalogApi,
+  entriesApi,
+  type EntriesFilters,
+  type EntryListItem,
+  type ExportRequest,
+} from '@/lib/api/entries';
 import { useAuth } from '@/lib/auth/auth-context';
 import { saveBlob } from '@/lib/download';
 import { canDeleteEntries, canRestoreEntries } from '@/lib/permissions';
@@ -109,6 +124,53 @@ export default function EntriesListPage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entriesQuery.data]);
 
+  const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({});
+  const selectedIds = React.useMemo(
+    () => Object.keys(rowSelection).filter((id) => rowSelection[id]),
+    [rowSelection],
+  );
+  const selectedCount = selectedIds.length;
+
+  // Selection never survives a filter change — ids may no longer exist.
+  // The key excludes `cursor`, so "Load more" keeps the selection.
+  React.useEffect(() => {
+    setRowSelection({});
+  }, [filterKey]);
+
+  const [exporting, setExporting] = React.useState(false);
+  const toolbarRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    toolbarRef.current?.toggleAttribute('inert', selectedCount === 0);
+  }, [selectedCount]);
+
+  async function runExport(body: ExportRequest, successMsg: string): Promise<void> {
+    setExporting(true);
+    try {
+      const blob = await entriesApi.exportCsv(body);
+      saveBlob(blob, `entries-${new Date().toISOString().slice(0, 10)}.csv`);
+      toast.success(successMsg);
+    } catch {
+      toast.error(t('list.exportFailed'));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  function exportSelectedRows(): Promise<void> {
+    const count = selectedIds.length;
+    return runExport(
+      { mode: 'selected', entryIds: selectedIds },
+      t('list.exportDoneSelected', { count }),
+    );
+  }
+
+  function exportFilteredRows(): Promise<void> {
+    const f: EntriesFilters = { ...queryFilters };
+    delete f.cursor;
+    delete f.limit;
+    return runExport({ mode: 'filtered', filters: f }, t('list.exportDoneFiltered'));
+  }
+
   async function download(entry: EntryListItem): Promise<void> {
     try {
       const blob = await entriesApi.download(entry.id);
@@ -137,7 +199,66 @@ export default function EntriesListPage(): JSX.Element {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t('list.title')}</h1>
-        <Button onClick={() => router.push('/upload')}>{t('list.upload')}</Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => router.push('/upload')}>{t('list.upload')}</Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                disabled={exporting || allItems.length === 0}
+                aria-label={t('list.export')}
+              >
+                {exporting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+                {t('list.export')}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                disabled={selectedCount === 0 || exporting}
+                onSelect={() => void exportSelectedRows()}
+              >
+                {t('list.exportSelected', { count: selectedCount })}
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={exporting} onSelect={() => void exportFilteredRows()}>
+                {t('list.exportFiltered')}
+              </DropdownMenuItem>
+              <DropdownMenuLabel className="px-2 py-1.5 text-xs font-normal text-muted-foreground">
+                {t('list.exportNote')}
+              </DropdownMenuLabel>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      <div
+        ref={toolbarRef}
+        aria-hidden={selectedCount === 0}
+        className={`grid transition-all duration-200 ease-out ${
+          selectedCount === 0 ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'
+        }`}
+      >
+        <div className="overflow-hidden">
+          <div className="flex items-center gap-3 rounded-md border bg-muted/40 px-4 py-2">
+            <span className="text-sm font-medium">
+              {t('list.selectedCount', { count: selectedCount })}
+            </span>
+            <Button size="sm" disabled={exporting} onClick={() => void exportSelectedRows()}>
+              {t('list.exportSelectedBtn')}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={exporting}
+              onClick={() => setRowSelection({})}
+            >
+              {t('list.clearSelection')}
+            </Button>
+          </div>
+        </div>
       </div>
 
       <Card>
@@ -305,7 +426,13 @@ export default function EntriesListPage(): JSX.Element {
         </Card>
       ) : (
         <>
-          <EntriesTable items={allItems} actions={actions} locale={locale} />
+          <EntriesTable
+            items={allItems}
+            actions={actions}
+            locale={locale}
+            rowSelection={rowSelection}
+            onRowSelectionChange={setRowSelection}
+          />
           {hasMore ? (
             <div className="flex justify-center">
               <Button

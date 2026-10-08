@@ -6,11 +6,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
+import { Readable } from 'node:stream';
 import type { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PermissionsService } from '../rbac/permissions.service';
 import { ScopeMatcher } from '../rbac/scope-matcher';
 import { StorageService } from '../storage/storage.service';
+import type { ExportEntriesDto } from './dto/export-entries.dto';
 import type { ListEntriesDto } from './dto/list-entries.dto';
 import type { UpdateEntryDto } from './dto/update-entry.dto';
 import type { UploadEntryDto } from './dto/upload-entry.dto';
@@ -21,6 +23,66 @@ export interface Actor {
   userId: string;
   ip: string | null;
   userAgent: string | null;
+}
+
+/** Rows per export query — bounded so 100K-row exports never sit in memory. */
+const EXPORT_BATCH_SIZE = 1000;
+
+/**
+ * Fixed Arabic headers: the CSV is an org-wide data artifact, so it does
+ * not follow the UI locale. Order is part of the contract.
+ */
+const CSV_HEADERS = [
+  'الرقم التسلسلي',
+  'البادئة',
+  'السنة',
+  'كود الشركة',
+  'الشركة',
+  'كود المشروع',
+  'المشروع',
+  'اسم الملف',
+  'الحجم (بايت)',
+  'البصمة',
+  'البريد المسجل',
+  'تاريخ الرفع',
+];
+
+/** RFC 4180: quote when the value contains a comma, quote or newline. */
+function csvField(value: unknown): string {
+  const s = value === null || value === undefined ? '' : String(value);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+type ExportRow = {
+  serial: string;
+  typePrefix: string;
+  year: number;
+  fileName: string;
+  fileSize: number;
+  fileHash: string;
+  createdAt: Date;
+  company: { code: number; nameAr: string; nameEn: string };
+  project: { code: string; nameAr: string; nameEn: string };
+  uploader: { nameAr: string; nameEn: string };
+};
+
+function entryToCsvLine(row: ExportRow): string {
+  return [
+    row.serial,
+    row.typePrefix,
+    row.year,
+    row.company.code,
+    row.company.nameAr || row.company.nameEn,
+    row.project.code,
+    row.project.nameAr || row.project.nameEn,
+    row.fileName,
+    row.fileSize,
+    row.fileHash,
+    row.uploader.nameAr || row.uploader.nameEn,
+    row.createdAt.toISOString(),
+  ]
+    .map(csvField)
+    .join(',');
 }
 
 @Injectable()
@@ -174,14 +236,22 @@ export class EntriesService {
     };
   }
 
-  async list(query: ListEntriesDto, actor: Actor): Promise<Record<string, unknown>> {
+  /**
+   * Shared WHERE for list() and export(mode=filtered): range validation,
+   * the includeDeleted grant check, scope + filter clauses. One builder so
+   * "export what the list shows" can never drift from the list itself.
+   */
+  private async buildListWhere(
+    query: ListEntriesDto,
+    userId: string,
+  ): Promise<Prisma.EntryWhereInput> {
     if (query.serialFrom && query.serialTo && query.serialFrom > query.serialTo) {
       throw new BadRequestException('serialFrom must be less than or equal to serialTo');
     }
-    const scopeWhere = await this.buildScopeWhere(actor.userId);
+    const scopeWhere = await this.buildScopeWhere(userId);
 
     if (query.includeDeleted) {
-      const grants = await this.permissions.getEffectiveGrants(actor.userId);
+      const grants = await this.permissions.getEffectiveGrants(userId);
       const canSeeDeleted = grants.some((g) => g.action === 'DELETE' && g.resource === 'ENTRY');
       if (!canSeeDeleted) {
         throw new ForbiddenException('Insufficient permissions');
@@ -206,10 +276,15 @@ export class EntriesService {
     }
     if (query.q) and.push({ fileName: { contains: query.q, mode: 'insensitive' } });
     if (!query.includeDeleted) and.push({ deletedAt: null });
+    return { AND: and };
+  }
+
+  async list(query: ListEntriesDto, actor: Actor): Promise<Record<string, unknown>> {
+    const where = await this.buildListWhere(query, actor.userId);
 
     const limit = query.limit;
     const rows = await this.prisma.entry.findMany({
-      where: { AND: and },
+      where,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
       take: limit + 1,
@@ -230,6 +305,126 @@ export class EntriesService {
       nextCursor: hasMore && last ? last.id : null,
       hasMore,
     };
+  }
+
+  /**
+   * Streamed CSV export. The WHERE (scope included) is fully built BEFORE
+   * the stream exists, so 403/400 still surface as normal JSON errors and
+   * only successful exports start writing headers. Rows arrive in
+   * createdAt-ASC keyset batches of 1000 — never the whole result set.
+   */
+  async export(dto: ExportEntriesDto, actor: Actor): Promise<Readable> {
+    const entryIds = dto.entryIds;
+    let where: Prisma.EntryWhereInput;
+    if (dto.mode === 'selected') {
+      if (!entryIds || entryIds.length === 0) {
+        throw new BadRequestException('mode=selected requires a non-empty entryIds array');
+      }
+      if (entryIds.length > 5000) {
+        throw new BadRequestException('entryIds exceeds the 5000 limit');
+      }
+      if (dto.filters !== undefined) {
+        throw new BadRequestException('filters must not be sent with mode=selected');
+      }
+      const scopeWhere = await this.buildScopeWhere(actor.userId);
+      // Out-of-scope ids are silently dropped (never a whole-request 403);
+      // the difference surfaces in the EXPORT_PARTIAL audit event below.
+      where = { AND: [scopeWhere, { id: { in: entryIds } }, { deletedAt: null }] };
+    } else {
+      if (entryIds !== undefined) {
+        throw new BadRequestException('entryIds must not be sent with mode=filtered');
+      }
+      if (!dto.filters) {
+        throw new BadRequestException('mode=filtered requires filters');
+      }
+      // buildListWhere also applies the scope clause + includeDeleted grant.
+      where = await this.buildListWhere(dto.filters, actor.userId);
+    }
+
+    return Readable.from(this.exportCsvChunks(where, dto, actor), { objectMode: false });
+  }
+
+  private async *exportCsvChunks(
+    where: Prisma.EntryWhereInput,
+    dto: ExportEntriesDto,
+    actor: Actor,
+  ): AsyncGenerator<string> {
+    yield '\uFEFF' + CSV_HEADERS.map(csvField).join(',') + '\r\n';
+
+    const select = {
+      id: true,
+      serial: true,
+      typePrefix: true,
+      year: true,
+      fileName: true,
+      fileSize: true,
+      fileHash: true,
+      createdAt: true,
+      company: { select: { code: true, nameAr: true, nameEn: true } },
+      project: { select: { code: true, nameAr: true, nameEn: true } },
+      uploader: { select: { nameAr: true, nameEn: true } },
+    } satisfies Prisma.EntrySelect;
+
+    let exported = 0;
+    let last: { createdAt: Date; id: string } | undefined;
+    for (;;) {
+      // Keyset pagination on (createdAt, id): ties on createdAt cannot skip
+      // or duplicate rows the way a plain `createdAt > last` cursor would.
+      const batchWhere: Prisma.EntryWhereInput = last
+        ? {
+            AND: [
+              where,
+              {
+                OR: [
+                  { createdAt: { gt: last.createdAt } },
+                  { AND: [{ createdAt: last.createdAt }, { id: { gt: last.id } }] },
+                ],
+              },
+            ],
+          }
+        : where;
+      const batch = await this.prisma.entry.findMany({
+        where: batchWhere,
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        take: EXPORT_BATCH_SIZE,
+        select,
+      });
+      if (batch.length === 0) break;
+      exported += batch.length;
+      const tail = batch[batch.length - 1];
+      if (!tail) break;
+      last = { createdAt: tail.createdAt, id: tail.id };
+      yield batch.map(entryToCsvLine).join('\r\n') + '\r\n';
+      if (batch.length < EXPORT_BATCH_SIZE) break;
+    }
+
+    // Manual audit (documented exception, same as openStream): the response
+    // streams, so the @Audit interceptor cannot bracket it. Counts only —
+    // the id list itself could be thousands of rows.
+    const requested = dto.mode === 'selected' ? (dto.entryIds?.length ?? 0) : undefined;
+    const partial = requested !== undefined && exported < requested;
+    await this.prisma.auditLog
+      .create({
+        data: {
+          userId: actor.userId,
+          action: 'EXPORT',
+          resource: 'ENTRY',
+          resourceId: null,
+          newValues: {
+            event: partial ? 'EXPORT_PARTIAL' : 'EXPORT',
+            mode: dto.mode,
+            count: exported,
+            // Always present: number for selected, null for filtered —
+            // compliance reads one shape for both modes.
+            entryIdsCount: requested ?? null,
+            // Plain object (no DTO class instance) so Prisma accepts the JSON.
+            ...(dto.mode === 'filtered' ? { filters: { ...(dto.filters ?? {}) } } : {}),
+          },
+          ipAddress: actor.ip,
+          userAgent: actor.userAgent,
+        },
+      })
+      .catch(() => undefined);
   }
 
   async findOne(id: string): Promise<Record<string, unknown>> {

@@ -57,7 +57,18 @@
       "loadMore": "عرض المزيد",
       "loading": "جاري تحميل القيود...",
       "error": "تعذر تحميل القيود",
-      "retry": "إعادة المحاولة"
+      "retry": "إعادة المحاولة",
+      "export": "تصدير",
+      "exportSelected": "تصدير المحدد ({count})",
+      "exportSelectedBtn": "تصدير المحدد",
+      "exportFiltered": "تصدير حسب الفلاتر",
+      "exportNote": "يشمل التصدير السجلات المطابقة للفلاتر الحالية",
+      "exportDoneSelected": "تم تصدير {count} صف",
+      "exportDoneFiltered": "تم تصدير السجلات المطابقة للفلاتر",
+      "exportFailed": "تعذر التصدير، حاول مرة أخرى",
+      "selectedCount": "{count} صف محدد",
+      "clearSelection": "إلغاء التحديد",
+      "selectAll": "تحديد الكل"
     },
     "filters": {
       "company": "الشركة",

@@ -57,7 +57,18 @@
       "loadMore": "Load more",
       "loading": "Loading entries...",
       "error": "Could not load entries",
-      "retry": "Retry"
+      "retry": "Retry",
+      "export": "Export",
+      "exportSelected": "Export selected ({count})",
+      "exportSelectedBtn": "Export selected",
+      "exportFiltered": "Export filtered",
+      "exportNote": "Exports records matching the current filters",
+      "exportDoneSelected": "Exported {count} rows",
+      "exportDoneFiltered": "Exported filtered records",
+      "exportFailed": "Export failed, try again",
+      "selectedCount": "{count} rows selected",
+      "clearSelection": "Clear selection",
+      "selectAll": "Select all"
     },
     "filters": {
       "company": "Company",

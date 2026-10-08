@@ -6,11 +6,14 @@ import {
   getCoreRowModel,
   useReactTable,
   type ColumnDef,
+  type OnChangeFn,
+  type RowSelectionState,
 } from '@tanstack/react-table';
 import { useTranslations } from 'next-intl';
 import * as React from 'react';
 import { Download, Eye, MoreHorizontal, RotateCcw, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,6 +23,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import type { EntryListItem } from '@/lib/api/entries';
 import { formatBytes, formatDateTime } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { useLocalizedName, type Bilingual } from '@/lib/use-localized-name';
 
 function NameCell({ entity }: { entity: Bilingual | null | undefined }): JSX.Element {
@@ -44,15 +48,45 @@ export function EntriesTable({
   items,
   actions,
   locale,
+  rowSelection: controlledSelection,
+  onRowSelectionChange,
 }: {
   items: EntryListItem[];
   actions: RowActions;
   locale: string;
+  /** Controlled row selection (page owns it); falls back to internal state. */
+  rowSelection?: RowSelectionState;
+  onRowSelectionChange?: OnChangeFn<RowSelectionState>;
 }): JSX.Element {
   const t = useTranslations('entries');
+  const [internalSelection, setInternalSelection] = React.useState<RowSelectionState>({});
+  const rowSelection = controlledSelection ?? internalSelection;
+  const setRowSelection: OnChangeFn<RowSelectionState> =
+    onRowSelectionChange ?? setInternalSelection;
 
   const columns = React.useMemo<ColumnDef<EntryListItem>[]>(
     () => [
+      {
+        id: 'select',
+        size: 40,
+        enableSorting: false,
+        header: ({ table }) => (
+          <Checkbox
+            checked={table.getIsAllRowsSelected()}
+            indeterminate={table.getIsSomeRowsSelected()}
+            onCheckedChange={(v) => table.toggleAllRowsSelected(Boolean(v))}
+            aria-label={t('list.selectAll')}
+          />
+        ),
+        cell: ({ row }) => (
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(v) => row.toggleSelected(Boolean(v))}
+            aria-label={row.original.serial}
+            onClick={(e) => e.stopPropagation()}
+          />
+        ),
+      },
       {
         accessorKey: 'serial',
         header: () => t('columns.serial'),
@@ -153,6 +187,9 @@ export function EntriesTable({
     columns,
     getCoreRowModel: getCoreRowModel(),
     getRowId: (row) => row.id,
+    enableRowSelection: true,
+    state: { rowSelection },
+    onRowSelectionChange: setRowSelection,
   });
 
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -175,7 +212,13 @@ export function EntriesTable({
           {table.getHeaderGroups().map((hg) => (
             <tr key={hg.id}>
               {hg.headers.map((h) => (
-                <th key={h.id} className="h-10 px-3 text-start align-middle font-medium text-muted-foreground">
+                <th
+                  key={h.id}
+                  className={cn(
+                    'h-10 px-3 text-start align-middle font-medium text-muted-foreground',
+                    h.column.id === 'select' && 'w-10 flex-none px-0 text-center',
+                  )}
+                >
                   {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
                 </th>
               ))}
@@ -198,7 +241,13 @@ export function EntriesTable({
                 style={{ transform: `translateY(${virtual.start}px)` }}
               >
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="flex-1 px-3 py-2 align-middle">
+                  <td
+                    key={cell.id}
+                    className={cn(
+                      'flex-1 px-3 py-2 align-middle',
+                      cell.column.id === 'select' && 'w-10 flex-none px-0',
+                    )}
+                  >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}

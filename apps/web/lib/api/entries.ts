@@ -115,6 +115,14 @@ export interface EntriesFilters {
   limit?: number;
 }
 
+/** POST /entries/export body — mirrors ExportEntriesDto on the API. */
+export interface ExportRequest {
+  mode: 'selected' | 'filtered';
+  entryIds?: string[];
+  filters?: EntriesFilters;
+  format?: 'csv';
+}
+
 function toQuery(filters: EntriesFilters): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
@@ -154,6 +162,8 @@ export const entriesApi = {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
+  exportCsv: (body: ExportRequest): Promise<Blob> =>
+    api.fetchBlob('/entries/export', { method: 'POST', body: JSON.stringify(body) }),
 };
 
 export const catalogApi = {

@@ -484,4 +484,223 @@ describe('EntriesService', () => {
       expect.objectContaining({ where: { resource: 'ENTRY', resourceId: 'deleted-id' } }),
     );
   });
+
+  describe('export (CSV)', () => {
+    function exportRow(over: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        id: 'e1',
+        serial: '6200000000',
+        typePrefix: '62',
+        year: 2025,
+        fileName: '6200000000.pdf',
+        fileSize: 1024,
+        fileHash: 'abc123',
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+        company: { code: 2000, nameAr: 'الشركة', nameEn: 'Co' },
+        project: { code: 'R', nameAr: 'الرحاب', nameEn: 'Rehab' },
+        uploader: { nameAr: 'مدير', nameEn: 'Manager' },
+        ...over,
+      };
+    }
+
+    async function readAll(stream: NodeJS.ReadableStream): Promise<string> {
+      let out = '';
+      for await (const chunk of stream) out += String(chunk);
+      return out;
+    }
+
+    it('mode=selected streams only entries matching the ids AND within scope', async () => {
+      permissions.getEffectiveGrants.mockResolvedValue([
+        { action: 'VIEW', resource: 'ENTRY', scopeType: 'PROJECT', scopeId: 'p1' },
+      ]);
+      prisma.entry.findMany.mockResolvedValue([
+        exportRow({ id: 'e1' }),
+        exportRow({ id: 'e2', serial: '6200000001' }),
+      ]);
+      prisma.auditLog.create.mockResolvedValue({});
+
+      const csv = await readAll(
+        await svc.export({ mode: 'selected', entryIds: ['e1', 'e2'] } as never, ACTOR),
+      );
+
+      expect(prisma.entry.findMany.mock.calls[0][0].where).toEqual({
+        AND: [
+          { OR: [{ projectId: { in: ['p1'] } }] },
+          { id: { in: ['e1', 'e2'] } },
+          { deletedAt: null },
+        ],
+      });
+      expect(csv).toContain('6200000000');
+      expect(csv).toContain('6200000001');
+      // Audit: counts only — the id list itself never lands in the log.
+      const auditData = prisma.auditLog.create.mock.calls[0][0].data;
+      expect(auditData.action).toBe('EXPORT');
+      expect(auditData.resource).toBe('ENTRY');
+      expect(auditData.newValues).toEqual(
+        expect.objectContaining({ event: 'EXPORT', mode: 'selected', count: 2, entryIdsCount: 2 }),
+      );
+      expect(auditData.newValues).not.toHaveProperty('entryIds');
+    });
+
+    it('mode=selected: ids outside scope are dropped; audit logs EXPORT_PARTIAL with counts', async () => {
+      permissions.getEffectiveGrants.mockResolvedValue([
+        { action: 'VIEW', resource: 'ENTRY', scopeType: 'PROJECT', scopeId: 'p1' },
+      ]);
+      prisma.entry.findMany.mockResolvedValue([exportRow({ id: 'e1' })]);
+      prisma.auditLog.create.mockResolvedValue({});
+
+      const csv = await readAll(
+        await svc.export({ mode: 'selected', entryIds: ['e1', 'eX', 'eY'] } as never, ACTOR),
+      );
+
+      // Only the in-scope row comes back — no 403 for the whole request.
+      expect(csv).toContain('6200000000');
+      expect(csv).not.toContain('eX');
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'EXPORT',
+            resource: 'ENTRY',
+            newValues: expect.objectContaining({
+              event: 'EXPORT_PARTIAL',
+              mode: 'selected',
+              count: 1,
+              entryIdsCount: 3,
+            }),
+          }),
+        }),
+      );
+      expect(prisma.auditLog.create.mock.calls[0][0].data.newValues).not.toHaveProperty('entryIds');
+    });
+
+    it('mode=filtered builds the same WHERE as list (filters + deletedAt), batched, no pagination', async () => {
+      permissions.getEffectiveGrants.mockResolvedValue([
+        { action: 'VIEW', resource: 'ENTRY', scopeType: 'COMPANY', scopeId: 'c1' },
+      ]);
+      prisma.entry.findMany.mockResolvedValue([]);
+      prisma.auditLog.create.mockResolvedValue({});
+
+      const csv = await readAll(
+        await svc.export(
+          {
+            mode: 'filtered',
+            filters: { year: 2025, companyId: 'c1', limit: 50, includeDeleted: false } as never,
+          } as never,
+          ACTOR,
+        ),
+      );
+
+      expect(prisma.entry.findMany.mock.calls[0][0]).toEqual({
+        where: {
+          AND: [
+            { OR: [{ companyId: { in: ['c1'] } }] },
+            { companyId: 'c1' },
+            { year: 2025 },
+            { deletedAt: null },
+          ],
+        },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        take: 1000,
+        select: expect.objectContaining({ id: true, serial: true, fileHash: true }),
+      });
+      // list()'s `limit`/`cursor` never reach the export query.
+      expect(csv.startsWith('\uFEFF')).toBe(true);
+      // Compliance shape: the exported scope is fully reconstructible
+      // from the audit entry (filters + counts, never the id list).
+      expect(prisma.auditLog.create.mock.calls[0][0].data.newValues).toEqual(
+        expect.objectContaining({
+          mode: 'filtered',
+          count: 0,
+          entryIdsCount: null,
+          filters: expect.objectContaining({ year: 2025, companyId: 'c1' }),
+        }),
+      );
+    });
+
+    it('scope: user without ENTRY:VIEW → 403 before any query', async () => {
+      permissions.getEffectiveGrants.mockResolvedValue([
+        { action: 'VIEW', resource: 'PROJECT', scopeType: 'GROUP', scopeId: '' },
+      ]);
+      await expect(
+        svc.export({ mode: 'selected', entryIds: ['e1'] } as never, ACTOR),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.entry.findMany).not.toHaveBeenCalled();
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('CSV: BOM prefix, fixed Arabic headers, CRLF endings, quote escaping', async () => {
+      permissions.getEffectiveGrants.mockResolvedValue([
+        { action: 'VIEW', resource: 'ENTRY', scopeType: 'GROUP', scopeId: '' },
+      ]);
+      prisma.entry.findMany.mockResolvedValue([
+        exportRow({ fileName: 'has,comma and "quote".pdf' }),
+        exportRow({ id: 'e2', serial: '6200000001' }),
+      ]);
+      prisma.auditLog.create.mockResolvedValue({});
+
+      const csv = await readAll(
+        await svc.export({ mode: 'selected', entryIds: ['e1', 'e2'] } as never, ACTOR),
+      );
+
+      expect(csv.charCodeAt(0)).toBe(0xfeff);
+      expect(csv).toContain(
+        'الرقم التسلسلي,البادئة,السنة,كود الشركة,الشركة,كود المشروع,المشروع,اسم الملف,الحجم (بايت),البصمة,البريد المسجل,تاريخ الرفع',
+      );
+      expect(csv).toContain('"has,comma and ""quote"".pdf"');
+      expect(csv).toContain('2025-01-01T00:00:00.000Z');
+      // Every line terminator is CRLF — no bare LF anywhere.
+      expect(csv.replace(/\r\n/g, '')).not.toContain('\n');
+    });
+
+    it('streams in keyset batches of 1000, ordered createdAt ASC', async () => {
+      permissions.getEffectiveGrants.mockResolvedValue([
+        { action: 'VIEW', resource: 'ENTRY', scopeType: 'GROUP', scopeId: '' },
+      ]);
+      const bigBatch = Array.from({ length: 1000 }, (_, i) =>
+        exportRow({ id: `e${i}`, serial: '6200000000' }),
+      );
+      const tail = [exportRow({ id: 'e1000', serial: '6300000001' })];
+      let call = 0;
+      prisma.entry.findMany.mockImplementation(() =>
+        Promise.resolve(call++ === 0 ? bigBatch : tail),
+      );
+      prisma.auditLog.create.mockResolvedValue({});
+
+      const csv = await readAll(
+        await svc.export(
+          { mode: 'filtered', filters: { includeDeleted: false } as never } as never,
+          ACTOR,
+        ),
+      );
+
+      expect(prisma.entry.findMany).toHaveBeenCalledTimes(2);
+      // Second batch continues AFTER the last (createdAt, id) — the keyset
+      // predicate, not an offset.
+      const secondWhere = prisma.entry.findMany.mock.calls[1][0].where as {
+        AND: unknown[];
+      };
+      expect(secondWhere.AND[1]).toHaveProperty('OR');
+      // header + 1000 rows + 1 tail row
+      expect(csv.split('\r\n').filter(Boolean)).toHaveLength(1002);
+      expect(prisma.auditLog.create.mock.calls[0][0].data.newValues).toEqual(
+        expect.objectContaining({ event: 'EXPORT', mode: 'filtered', count: 1001 }),
+      );
+    });
+
+    it('rejects mismatched or empty mode payloads', async () => {
+      await expect(
+        svc.export({ mode: 'selected' } as never, ACTOR),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(
+        svc.export({ mode: 'selected', entryIds: ['e1'], filters: {} as never } as never, ACTOR),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(
+        svc.export({ mode: 'filtered', entryIds: ['e1'] } as never, ACTOR),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(
+        svc.export({ mode: 'filtered', filters: {} as never, entryIds: ['e1'] } as never, ACTOR),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.entry.findMany).not.toHaveBeenCalled();
+    });
+  });
 });

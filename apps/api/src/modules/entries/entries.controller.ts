@@ -29,6 +29,7 @@ import { RequirePermission } from '../auth/decorators/require-permission.decorat
 import type { AuthenticatedUser } from '../auth/types';
 import { Audit } from '../audit/audit.decorator';
 import { PermissionsGuard } from '../rbac/guards/permissions.guard';
+import { ExportEntriesDto } from './dto/export-entries.dto';
 import { ListEntriesDto } from './dto/list-entries.dto';
 import { UpdateEntryDto } from './dto/update-entry.dto';
 import { UploadEntryDto } from './dto/upload-entry.dto';
@@ -107,6 +108,38 @@ export class EntriesController {
   @RequirePermission('VIEW', 'ENTRY')
   async years(@CurrentUser() user: AuthenticatedUser): Promise<unknown> {
     return { years: await this.entries.years(user.id) };
+  }
+
+  @Post('export')
+  @RequirePermission('EXPORT', 'ENTRY')
+  async exportEntries(
+    @Body() dto: ExportEntriesDto,
+    @Req() req: Request,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+    @Headers('user-agent') userAgent: string | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
+    // 1. CORS FIRST — before any await, before any pipe (same rule as
+    // streamFile below): if export() throws, the error response still
+    // carries CORS headers; once the pipe starts, middleware-set headers
+    // may not survive the commit.
+    applyCorsHeaders(req, res, this.corsOrigins());
+    // 2. Then everything else.
+    // Scope/DTO failures throw BEFORE the stream exists — the exception
+    // layer still formats them as JSON (same as streamFile).
+    const stream = await this.entries.export(dto, {
+      userId: user.id,
+      ip,
+      userAgent: userAgent ?? null,
+    });
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="entries-${new Date().toISOString().slice(0, 10)}.csv"`,
+    );
+    res.setHeader('Transfer-Encoding', 'chunked');
+    stream.pipe(res);
   }
 
   @Get(':id')

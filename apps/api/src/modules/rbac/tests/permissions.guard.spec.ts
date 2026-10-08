@@ -178,4 +178,20 @@ describe('PermissionsGuard', () => {
       ForbiddenException,
     );
   });
+
+  it('user without EXPORT ENTRY → 403 (POST /entries/export)', async () => {
+    permissions.getEffectiveGrants.mockResolvedValue([grant('VIEW', 'ENTRY', 'PROJECT', 'p1')]);
+    setRequired({ action: 'EXPORT', resource: 'ENTRY' });
+    await expect(guard.canActivate(ctxWith(reqFor({ id: 'u4' })))).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(scopes.resolve).not.toHaveBeenCalled();
+  });
+
+  it('ARCHIVIST with EXPORT ENTRY, no scopeHint → allow (row filtering is the handler job)', async () => {
+    permissions.getEffectiveGrants.mockResolvedValue([grant('EXPORT', 'ENTRY', 'PROJECT', 'p1')]);
+    setRequired({ action: 'EXPORT', resource: 'ENTRY' });
+    await expect(guard.canActivate(ctxWith(reqFor({ id: 'u3' })))).resolves.toBe(true);
+    expect(scopes.resolve).not.toHaveBeenCalled();
+  });
 });

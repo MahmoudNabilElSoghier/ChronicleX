@@ -30,7 +30,7 @@ vi.mock('@/lib/api/entries', async (importOriginal) => {
   const mod = await importOriginal<typeof import('@/lib/api/entries')>();
   return {
     ...mod,
-    entriesApi: { list: vi.fn(), download: vi.fn() },
+    entriesApi: { list: vi.fn(), download: vi.fn(), exportCsv: vi.fn() },
     catalogApi: {
       companies: vi.fn().mockResolvedValue({ items: [] }),
       projects: vi.fn().mockResolvedValue({ items: [] }),
@@ -39,14 +39,26 @@ vi.mock('@/lib/api/entries', async (importOriginal) => {
   };
 });
 
+vi.mock('@/lib/download', () => ({
+  saveBlob: vi.fn(),
+  openBlob: vi.fn(),
+}));
+
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
+}));
+
 vi.mock('@/lib/auth/auth-context', () => ({
   useAuth: () => ({ user: null, status: 'unauthenticated', login: vi.fn(), logout: vi.fn() }),
   useRequireAuth: () => null,
 }));
 
 import { entriesApi } from '@/lib/api/entries';
+import { saveBlob } from '@/lib/download';
+import { toast } from 'sonner';
 
 const listMock = vi.mocked(entriesApi.list);
+const exportMock = vi.mocked(entriesApi.exportCsv);
 
 function item(id: string, serial: string): EntryListItem {
   return {
@@ -109,6 +121,7 @@ describe('EntriesListPage', () => {
       nextCursor: null,
       hasMore: false,
     } satisfies EntriesListResponse);
+    exportMock.mockResolvedValue(new Blob(['csv']));
   });
 
   it('renders 5 mock items', async () => {
@@ -196,5 +209,154 @@ describe('EntriesListPage', () => {
     const lastUrl = onUrlUpdate.mock.calls.at(-1)?.[0] as UrlUpdate;
     expect(lastUrl.searchParams.has('serialFrom')).toBe(false);
     expect(lastUrl.searchParams.has('serialTo')).toBe(false);
+  });
+
+  describe('selection + CSV export', () => {
+    it('row and header checkboxes: partial selection → indeterminate, all → checked', async () => {
+      const user = userEvent.setup();
+      renderList();
+      await waitFor(() => expect(screen.getByText('6200000001')).toBeInTheDocument());
+      const header = screen.getByLabelText('تحديد الكل') as HTMLInputElement;
+      expect(header).not.toBeChecked();
+      expect(header.indeterminate).toBe(false);
+
+      await user.click(screen.getByLabelText('6200000001'));
+      expect(screen.getByLabelText('6200000001')).toBeChecked();
+      await waitFor(() =>
+        expect((screen.getByLabelText('تحديد الكل') as HTMLInputElement).indeterminate).toBe(true),
+      );
+
+      await user.click(screen.getByLabelText('تحديد الكل'));
+      await waitFor(() => expect(screen.getByLabelText('تحديد الكل')).toBeChecked());
+      for (const s of ['1', '2', '3', '4', '5']) {
+        expect(screen.getByLabelText(`620000000${s}`)).toBeChecked();
+      }
+    });
+
+    it('selection toolbar is a11y-hidden (role query) until a row is selected', async () => {
+      const user = userEvent.setup();
+      renderList();
+      await waitFor(() => expect(screen.getByText('6200000001')).toBeInTheDocument());
+      // aria-hidden container → excluded from role queries
+      expect(
+        screen.queryByRole('button', { name: 'تصدير المحدد' }),
+      ).not.toBeInTheDocument();
+
+      await user.click(screen.getByLabelText('6200000001'));
+      expect(
+        await screen.findByRole('button', { name: 'تصدير المحدد' }),
+      ).toBeInTheDocument();
+      expect(screen.getByText('1 صف محدد')).toBeInTheDocument();
+    });
+
+    it('changing a filter clears the selection', async () => {
+      const user = userEvent.setup();
+      renderList();
+      await waitFor(() => expect(screen.getByText('6200000001')).toBeInTheDocument());
+      await user.click(screen.getByLabelText('6200000001'));
+      await waitFor(() => expect(screen.getByText('1 صف محدد')).toBeInTheDocument());
+
+      const yearSelect = screen
+        .getAllByRole('combobox')
+        .find((s) => s.innerHTML.includes('2025'));
+      await user.selectOptions(yearSelect as HTMLElement, '2024');
+      await waitFor(() =>
+        expect(screen.getByLabelText('6200000001')).not.toBeChecked(),
+      );
+      expect(screen.queryByText('1 صف محدد')).not.toBeInTheDocument();
+    });
+
+    it('export dropdown: selected item disabled at 0, enabled with a count; Escape closes', async () => {
+      const user = userEvent.setup();
+      renderList();
+      await waitFor(() => expect(screen.getByText('6200000001')).toBeInTheDocument());
+
+      await user.click(screen.getByRole('button', { name: 'تصدير' }));
+      const selectedItem = await screen.findByRole('menuitem', {
+        name: 'تصدير المحدد (0)',
+      });
+      expect(selectedItem).toHaveAttribute('aria-disabled', 'true');
+      expect(screen.getByRole('menuitem', { name: 'تصدير حسب الفلاتر' })).not.toHaveAttribute(
+        'aria-disabled',
+      );
+
+      await user.keyboard('{Escape}');
+      await waitFor(() =>
+        expect(screen.queryByRole('menuitem', { name: 'تصدير حسب الفلاتر' })).not.toBeInTheDocument(),
+      );
+
+      // With a selection the item is enabled and carries the count.
+      await user.click(screen.getByLabelText('6200000001'));
+      await user.click(screen.getByRole('button', { name: 'تصدير' }));
+      const withSelection = await screen.findByRole('menuitem', {
+        name: 'تصدير المحدد (1)',
+      });
+      expect(withSelection).not.toHaveAttribute('aria-disabled');
+      await user.keyboard('{Escape}');
+    });
+
+    it('exports selected rows: payload, saveBlob filename, success toast', async () => {
+      const user = userEvent.setup();
+      renderList();
+      await waitFor(() => expect(screen.getByText('6200000001')).toBeInTheDocument());
+
+      await user.click(screen.getByLabelText('6200000001'));
+      await user.click(screen.getByLabelText('6200000002'));
+      await user.click(await screen.findByRole('button', { name: 'تصدير المحدد' }));
+
+      await waitFor(() =>
+        expect(exportMock).toHaveBeenCalledWith({
+          mode: 'selected',
+          entryIds: ['e1', 'e2'],
+        }),
+      );
+      expect(saveBlob).toHaveBeenCalledWith(
+        expect.any(Blob),
+        expect.stringMatching(/^entries-\d{4}-\d{2}-\d{2}\.csv$/),
+      );
+      expect(toast.success).toHaveBeenCalledWith('تم تصدير 2 صف');
+    });
+
+    it('exports filtered rows: payload carries filters without cursor/limit', async () => {
+      const user = userEvent.setup();
+      renderList();
+      await waitFor(() => expect(screen.getByText('6200000001')).toBeInTheDocument());
+
+      const yearSelect = screen
+        .getAllByRole('combobox')
+        .find((s) => s.innerHTML.includes('2025'));
+      await user.selectOptions(yearSelect as HTMLElement, '2024');
+      await waitFor(() =>
+        expect(listMock).toHaveBeenLastCalledWith(expect.objectContaining({ year: 2024 })),
+      );
+
+      await user.click(screen.getByRole('button', { name: 'تصدير' }));
+      await user.click(
+        await screen.findByRole('menuitem', { name: 'تصدير حسب الفلاتر' }),
+      );
+
+      await waitFor(() =>
+        expect(exportMock).toHaveBeenCalledWith({
+          mode: 'filtered',
+          filters: { year: 2024 },
+        }),
+      );
+      expect(toast.success).toHaveBeenCalledWith('تم تصدير السجلات المطابقة للفلاتر');
+    });
+
+    it('export failure shows the error toast', async () => {
+      const user = userEvent.setup();
+      exportMock.mockRejectedValue(new Error('boom'));
+      renderList();
+      await waitFor(() => expect(screen.getByText('6200000001')).toBeInTheDocument());
+
+      await user.click(screen.getByLabelText('6200000001'));
+      await user.click(await screen.findByRole('button', { name: 'تصدير المحدد' }));
+
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith('تعذر التصدير، حاول مرة أخرى'),
+      );
+      expect(saveBlob).not.toHaveBeenCalled();
+    });
   });
 });

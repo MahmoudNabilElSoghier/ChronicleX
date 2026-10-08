@@ -103,6 +103,10 @@ class ApiClient {
 
   async fetchBlob(path: string, init: RequestInit = {}, retried = false): Promise<Blob> {
     const headers = new Headers(init.headers);
+    // JSON bodies need an explicit content type (same rule as request()).
+    if (!headers.has('Content-Type') && typeof init.body === 'string') {
+      headers.set('Content-Type', 'application/json');
+    }
     if (this.accessToken) {
       headers.set('Authorization', `Bearer ${this.accessToken}`);
     }
@@ -121,7 +125,8 @@ class ApiClient {
     const raw = await res.blob();
     // Re-type defensively: some S3/streamed responses arrive without a
     // Content-Type, and Chrome refuses to render untyped blobs as PDF.
-    return new Blob([raw], { type: 'application/pdf' });
+    // A declared type (text/csv from the export endpoint) wins.
+    return new Blob([raw], { type: raw.type || 'application/pdf' });
   }
 
 }
