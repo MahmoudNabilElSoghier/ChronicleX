@@ -9,6 +9,8 @@
     "upload": "Upload",
     "users": "Users",
     "audit": "Audit Log",
+    "structure": "Company Structure",
+    "settings": "Settings",
     "admin": "Admin",
     "profile": "Profile"
   },
@@ -335,6 +337,38 @@
     "permissions": {
       "denied": "Permission denied",
       "notAllowed": "Not allowed"
+    },
+    "structure": {
+      "title": "Company Structure",
+      "search": "Search companies or projects...",
+      "projectsCount": "{count} projects",
+      "entriesCount": "{count} entries",
+      "lastUpload": "Last upload",
+      "never": "None",
+      "viewEntries": "View entries",
+      "expand": "Expand",
+      "collapse": "Collapse",
+      "empty": "No companies visible to you",
+      "noResults": "No matching results",
+      "error": "Could not load the company structure",
+      "retry": "Retry"
+    },
+    "settings": {
+      "title": "Upload Settings",
+      "heading": "Entry type prefixes",
+      "description": "Two-digit prefixes allowed at the start of an uploaded filename. The upload UI and the server validate against the same list.",
+      "current": "Current prefixes",
+      "addPlaceholder": "New prefix (2 digits)",
+      "add": "Add",
+      "invalidFormat": "Enter exactly 2 digits (e.g. 62)",
+      "duplicate": "Prefix already exists",
+      "emptyError": "Keep at least one prefix before saving",
+      "save": "Save changes",
+      "saved": "Prefixes saved",
+      "saveFailed": "Could not save prefixes",
+      "forbidden": "You cannot change group-wide settings",
+      "remove": "Remove prefix {prefix}",
+      "noPrefixes": "No prefixes"
     }
   },
   "profile": {

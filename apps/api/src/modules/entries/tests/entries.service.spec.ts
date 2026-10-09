@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { PermissionsService } from '../../rbac/permissions.service';
 import { ScopeMatcher } from '../../rbac/scope-matcher';
+import type { SettingsService } from '../../settings/settings.service';
 import { StorageService } from '../../storage/storage.service';
 import { EntriesService } from '../entries.service';
 
@@ -41,12 +42,14 @@ describe('EntriesService', () => {
   };
   const permissions = { getEffectiveGrants: jest.fn() };
   const scopes = new ScopeMatcher(permissions as unknown as PermissionsService);
+  const settings = { getEntryPrefixes: jest.fn(() => ['62', '63', '67']) };
 
   const svc = new EntriesService(
     prisma as unknown as PrismaService,
     storage as unknown as StorageService,
     permissions as unknown as PermissionsService,
     scopes,
+    settings as unknown as SettingsService,
   );
 
   function exportRow(over: Record<string, unknown> = {}): Record<string, unknown> {
@@ -75,6 +78,7 @@ describe('EntriesService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    settings.getEntryPrefixes.mockReturnValue(['62', '63', '67']);
     permissions.getEffectiveGrants.mockResolvedValue([
       { action: 'CREATE', resource: 'ENTRY', scopeType: 'PROJECT', scopeId: 'p1' },
     ]);
@@ -102,6 +106,26 @@ describe('EntriesService', () => {
     expect(res.fileHash).toHaveLength(64);
     // CREATE audit is the interceptor's job (see audit.interceptor.spec).
     expect(prisma.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('upload validates the prefix against the DB-configured list (not hardcoded)', async () => {
+    prisma.project.findUnique.mockResolvedValue(project);
+    prisma.entry.findUnique.mockResolvedValue(null);
+    prisma.entry.findFirst.mockResolvedValue(null);
+    prisma.entry.create.mockImplementation((args: { data: Record<string, unknown> }) =>
+      Promise.resolve({ id: 'e1', createdAt: new Date('2025-01-01'), ...args.data }),
+    );
+    settings.getEntryPrefixes.mockReturnValue(['99']);
+    const res = (await svc.upload(
+      { companyId: 'c1', projectId: 'p1', year: 2025 },
+      pdfFile('9900000000.pdf'),
+      ACTOR,
+    )) as Record<string, unknown>;
+    expect(res.serial).toBe('9900000000');
+    expect(res.typePrefix).toBe('99');
+    await expect(
+      svc.upload({ companyId: 'c1', projectId: 'p1', year: 2025 }, pdfFile('6200000000.pdf'), ACTOR),
+    ).rejects.toThrow("type prefix '62' is not in the allowed list: 99");
   });
 
   it('upload duplicate serial → 409 with the existing entry summary', async () => {

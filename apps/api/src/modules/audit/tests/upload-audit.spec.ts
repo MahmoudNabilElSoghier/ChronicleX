@@ -16,6 +16,7 @@ import { PermissionsGuard } from '../../rbac/guards/permissions.guard';
 import { PermissionsService } from '../../rbac/permissions.service';
 import { ScopeMatcher } from '../../rbac/scope-matcher';
 import { ScopeResolver } from '../../rbac/scope-resolver.service';
+import { SettingsService } from '../../settings/settings.service';
 
 /** POST /entries through the real interceptor: an AuditLog row must exist after 201. */
 describe('upload → audit row (in-memory, no Docker)', () => {
@@ -54,6 +55,10 @@ describe('upload → audit row (in-memory, no Docker)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: StorageService, useValue: storage },
         { provide: PermissionsService, useValue: permissions },
+        {
+          provide: SettingsService,
+          useValue: { getEntryPrefixes: () => ['62', '63', '67'] },
+        },
       ],
     }).compile();
     const app = moduleRef.createNestApplication();

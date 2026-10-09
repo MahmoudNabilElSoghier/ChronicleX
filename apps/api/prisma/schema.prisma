@@ -177,3 +177,13 @@ model AuditLog {
   @@index([userId, createdAt])
   @@index([resource, resourceId])
 }
+
+// Key/value settings that admins may change at runtime (no redeploy).
+// The only key today is `entry-prefixes` (allowed type prefixes for
+// uploaded serials); missing rows fall back to code defaults.
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+}

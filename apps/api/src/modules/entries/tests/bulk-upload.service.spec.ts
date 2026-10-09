@@ -7,6 +7,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { RedisService } from '../../../redis/redis.service';
 import { PermissionsService } from '../../rbac/permissions.service';
 import { ScopeMatcher } from '../../rbac/scope-matcher';
+import type { SettingsService } from '../../settings/settings.service';
 import { StorageService } from '../../storage/storage.service';
 import { BulkUploadService } from '../bulk-upload.service';
 
@@ -28,6 +29,7 @@ describe('BulkUploadService', () => {
   const redis = { hset: jest.fn(), expire: jest.fn(), rpush: jest.fn(), hgetall: jest.fn(), llen: jest.fn(), lrange: jest.fn() };
   const queue = { add: jest.fn(), getJobs: jest.fn() };
   const scopes = new ScopeMatcher(permissions as unknown as PermissionsService);
+  const settings = { getEntryPrefixes: jest.fn(() => ['62', '63', '67']) };
 
   const svc = new BulkUploadService(
     prisma as unknown as PrismaService,
@@ -36,6 +38,7 @@ describe('BulkUploadService', () => {
     scopes,
     redis as unknown as RedisService,
     queue as unknown as Queue,
+    settings as unknown as SettingsService,
   );
 
   const project = { id: 'p1', companyId: 'c1', code: 'REHAB', company: { id: 'c1', code: 2000 } };
@@ -43,6 +46,7 @@ describe('BulkUploadService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    settings.getEntryPrefixes.mockReturnValue(['62', '63', '67']);
     prisma.project.findUnique.mockResolvedValue(project);
     permissions.getEffectiveGrants.mockResolvedValue(grants);
   });

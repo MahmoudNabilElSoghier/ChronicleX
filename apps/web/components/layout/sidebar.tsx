@@ -2,7 +2,15 @@
 
 import { Link, usePathname } from '@/lib/navigation';
 import { useTranslations } from 'next-intl';
-import { FileText, Home, ScrollText, Upload, Users } from 'lucide-react';
+import {
+  Building2,
+  FileText,
+  Home,
+  ScrollText,
+  Settings,
+  Upload,
+  Users,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useActiveJobs } from '@/lib/upload/active-jobs-context';
@@ -16,6 +24,7 @@ export function Sidebar(): JSX.Element {
   // Upload requires CREATE ENTRY in practice; VIEWER-only users never have
   // it, so hide the entry point (the backend still enforces with 403).
   const canUpload = [...roleNames].some((r) => r !== 'VIEWER');
+  const isAdmin = roleNames.has('SUPER_ADMIN') || roleNames.has('COMPANY_ADMIN');
 
   const items = [
     { href: '/dashboard', label: t('dashboard'), icon: Home, show: true, badge: 0 },
@@ -25,14 +34,28 @@ export function Sidebar(): JSX.Element {
       href: '/admin/users',
       label: t('users'),
       icon: Users,
-      show: roleNames.has('SUPER_ADMIN') || roleNames.has('COMPANY_ADMIN'),
+      show: isAdmin,
       badge: 0,
     },
     {
       href: '/admin/audit',
       label: t('audit'),
       icon: ScrollText,
-      show: roleNames.has('SUPER_ADMIN') || roleNames.has('COMPANY_ADMIN'),
+      show: isAdmin,
+      badge: 0,
+    },
+    {
+      href: '/admin/structure',
+      label: t('structure'),
+      icon: Building2,
+      show: isAdmin,
+      badge: 0,
+    },
+    {
+      href: '/admin/settings',
+      label: t('settings'),
+      icon: Settings,
+      show: roleNames.has('SUPER_ADMIN'),
       badge: 0,
     },
   ];

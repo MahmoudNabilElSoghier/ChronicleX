@@ -11,6 +11,7 @@ import { PermissionsGuard } from '../../rbac/guards/permissions.guard';
 import { PermissionsService } from '../../rbac/permissions.service';
 import { ScopeMatcher } from '../../rbac/scope-matcher';
 import { ScopeResolver } from '../../rbac/scope-resolver.service';
+import { SettingsService } from '../../settings/settings.service';
 import { EntriesController } from '../entries.controller';
 import { EntriesService } from '../entries.service';
 
@@ -55,6 +56,10 @@ describe('POST /entries multipart (http)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: StorageService, useValue: storage },
         { provide: PermissionsService, useValue: permissions },
+        {
+          provide: SettingsService,
+          useValue: { getEntryPrefixes: () => ['62', '63', '67'] },
+        },
       ],
     }).compile();
     const app = moduleRef.createNestApplication();

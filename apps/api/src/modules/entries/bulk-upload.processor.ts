@@ -4,6 +4,8 @@ import type { Job } from 'bullmq';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
+// Value import (not `type`): emitDecoratorMetadata needs the class token.
+import { SettingsService } from '../settings/settings.service';
 import { StorageService } from '../storage/storage.service';
 import {
   BULK_TTL_SECONDS,
@@ -35,6 +37,7 @@ export class BulkUploadProcessor extends WorkerHost {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly redis: RedisService,
+    private readonly settings: SettingsService,
   ) {
     super();
   }
@@ -87,7 +90,10 @@ export class BulkUploadProcessor extends WorkerHost {
       let typePrefix: string;
       let counter: number;
       try {
-        ({ serial, typePrefix, counter } = parseSerialFromFilename(d.originalName));
+        ({ serial, typePrefix, counter } = parseSerialFromFilename(
+          d.originalName,
+          this.settings.getEntryPrefixes(),
+        ));
       } catch (err) {
         await this.record(
           d,

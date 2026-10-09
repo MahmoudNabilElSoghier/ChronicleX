@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { ApiError } from '@/lib/api/client';
 import {
   uploadApi,
@@ -8,6 +9,7 @@ import {
   type ExistingEntrySummary,
   type PreviewResult,
 } from '@/lib/api/entries';
+import { entryPrefixesQueryKey, fetchEntryPrefixes } from '@/lib/api/settings';
 import { useBulkUploadStatus } from '@/lib/upload/use-bulk-status';
 import { parseFilename, type ParseErrorCode, type ParseResult } from '@/lib/upload/filename-parser';
 
@@ -93,8 +95,15 @@ export function scopeIsComplete(scope?: QueueScope): boolean {
   );
 }
 
-function toItem(file: File, initialCheck: CheckState): UploadItem {
-  const parse = parseFilename(file.name);
+function sameParse(a: ParseResult, b: ParseResult): boolean {
+  if (a.ok !== b.ok) return false;
+  if (a.ok && b.ok) return a.serial === b.serial;
+  if (!a.ok && !b.ok) return a.code === b.code;
+  return false;
+}
+
+function toItem(file: File, initialCheck: CheckState, prefixes: string[]): UploadItem {
+  const parse = parseFilename(file.name, prefixes);
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     file,
@@ -164,6 +173,17 @@ export function useUploadQueue(
   jobStatus: BulkStatus | undefined;
   isSubmitting: boolean;
 } {
+  // DB-configurable entry type prefixes — fetched once (5 min stale) and
+  // shared with the settings page through entryPrefixesQueryKey. Declared
+  // before the state initializer so a warm cache parses correctly on mount.
+  const { data: prefixes } = useQuery({
+    queryKey: entryPrefixesQueryKey,
+    queryFn: fetchEntryPrefixes,
+    staleTime: 5 * 60_000,
+  });
+  const prefixesRef = React.useRef<string[]>([]);
+  prefixesRef.current = prefixes ?? [];
+
   // Seeded via the state initializer (not an effect) so a remount paints
   // the item immediately and can never re-seed after a user Remove.
   const [items, setItems] = React.useState<UploadItem[]>(() =>
@@ -172,6 +192,7 @@ export function useUploadQueue(
           toItem(
             initialFile,
             scopeIsComplete(scope) ? 'pending_check' : 'pending_scope',
+            prefixes ?? [],
           ),
         ]
       : [],
@@ -200,6 +221,7 @@ export function useUploadQueue(
 
   const addFiles = React.useCallback((files: File[]) => {
     const complete = scopeRef.current;
+    const prefixes = prefixesRef.current;
     setItems((prev) => {
       const overCap = prev.length + files.length > HASH_CAP;
       const initial: CheckState = !complete
@@ -207,7 +229,7 @@ export function useUploadQueue(
         : overCap
           ? 'deferred'
           : 'pending_check';
-      return [...prev, ...files.map((f) => toItem(f, initial))];
+      return [...prev, ...files.map((f) => toItem(f, initial, prefixes))];
     });
   }, []);
 
@@ -320,9 +342,43 @@ export function useUploadQueue(
     );
   }, [scopeKey, scopeComplete, overCap]);
 
+  // The prefix query resolves after mount: re-derive parses that ran
+  // against the pre-load empty list so rows never stick on a stale
+  // BAD_PREFIX verdict. Only not-yet-started rows reset their check.
+  React.useEffect(() => {
+    if (!prefixes) return;
+    setItems((prev) => {
+      let changed = false;
+      const next = prev.map((item) => {
+        const parse = parseFilename(item.name, prefixes);
+        if (sameParse(item.parse, parse)) return item;
+        changed = true;
+        const updated: UploadItem = { ...item, parse };
+        if (item.status === 'pending') {
+          if (parse.ok) {
+            updated.serial = parse.serial;
+            updated.check = !scopeRef.current
+              ? 'pending_scope'
+              : prev.length > HASH_CAP
+                ? 'deferred'
+                : 'pending_check';
+            updated.checkReason = undefined;
+          } else {
+            delete updated.serial;
+            updated.check = 'invalid';
+            updated.checkReason = parse.code;
+          }
+        }
+        return updated;
+      });
+      return changed ? next : prev;
+    });
+  }, [prefixes]);
+
   // Preview on file change AND scope change, debounced 400ms.
   // Batches over HASH_CAP skip hashing + preview entirely (deferred to
   // server-side validation) and never enter pending_check.
+  const prefixKey = prefixes?.join(',') ?? '';
   const fileSignature = items.map((i) => i.name).join('\n');
   React.useEffect(() => {
     const seq = ++seqRef.current;
@@ -359,9 +415,9 @@ export function useUploadQueue(
       void runPreview(s, snapshot, seq);
     }, PREVIEW_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-    // scopeKey/fileSignature are the identity of the effect inputs.
+    // scopeKey/fileSignature/prefixKey are the identity of the effect inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scopeKey, fileSignature, scopeComplete, overCap, runPreview]);
+  }, [scopeKey, fileSignature, scopeComplete, overCap, runPreview, prefixKey]);
 
   // Restore the last batch after reload/navigation back. A 404 means the
   // job report expired (24h TTL) — drop the key and show empty state.

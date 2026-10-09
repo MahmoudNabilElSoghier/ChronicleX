@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ar from '@/messages/ar.json';
 import UploadPage from '@/app/[locale]/(authenticated)/upload/page';
-import { uploadApi } from '@/lib/api/entries';
+import { uploadApi, type EntryDetail } from '@/lib/api/entries';
 import { ActiveJobsProvider, useActiveJobs } from '@/lib/upload/active-jobs-context';
 
 vi.mock('next/navigation', () => ({
@@ -55,11 +55,41 @@ vi.mock('@/lib/auth/auth-context', () => ({
   useRequireAuth: () => null,
 }));
 
+vi.mock('@/lib/api/settings', () => ({
+  settingsApi: {
+    getEntryPrefixes: vi.fn().mockResolvedValue({ prefixes: ['62', '63', '67'] }),
+    updateEntryPrefixes: vi.fn(),
+  },
+  entryPrefixesQueryKey: ['settings', 'entry-prefixes'],
+  fetchEntryPrefixes: vi.fn().mockResolvedValue(['62', '63', '67']),
+}));
+
 const singleMock = vi.mocked(uploadApi.single);
 const bulkMock = vi.mocked(uploadApi.bulk);
 
 function pdf(name: string): File {
   return new File(['%PDF'], name, { type: 'application/pdf' });
+}
+
+function entryDetail(id: string): EntryDetail {
+  return {
+    id,
+    serial: '6200000000',
+    typePrefix: '62',
+    year: 2025,
+    companyId: 'c1',
+    projectId: 'p1',
+    company: { code: 2000, nameAr: 'Co', nameEn: 'Co' },
+    project: { code: 'REHAB', nameAr: 'Rehab', nameEn: 'Rehab' },
+    fileName: '6200000000.pdf',
+    fileSize: 4,
+    createdAt: '2025-03-01T10:00:00.000Z',
+    deletedAt: null,
+    uploadedBy: { id: 'u1', nameAr: 'Admin' },
+    counter: 0,
+    mimeType: 'application/pdf',
+    fileHash: 'abc123',
+  };
 }
 
 function renderUpload(): void {
@@ -146,7 +176,7 @@ describe('UploadPage single tab', () => {
   });
 
   it('valid file enables submit; success shows the entry link', async () => {
-    singleMock.mockResolvedValue({ id: 'e1' });
+    singleMock.mockResolvedValue(entryDetail('e1'));
     const { uploadApi: api } = await import('@/lib/api/entries');
     vi.mocked(api.preview).mockResolvedValue({ results: [{ index: 0, status: 'ok' }] });
     renderUpload();
@@ -184,12 +214,10 @@ describe('UploadPage single tab', () => {
     const { entriesApi: fullApi, uploadApi: api } = await import('@/lib/api/entries');
     vi.mocked(api.preview).mockResolvedValue({ results: [{ index: 0, status: 'ok' }] });
     vi.mocked(fullApi.get).mockResolvedValue({
-      id: 'e9',
-      serial: '6200000000',
-      company: { nameAr: 'الشركة' },
-      project: { nameAr: 'الرحاب' },
-      year: 2025,
-      uploadedBy: { nameAr: 'مدير' },
+      ...entryDetail('e9'),
+      company: { code: 2000, nameAr: 'الشركة', nameEn: 'Co' },
+      project: { code: 'REHAB', nameAr: 'الرحاب', nameEn: 'Rehab' },
+      uploadedBy: { id: 'u1', nameAr: 'مدير' },
     });
     renderUpload();
     await chooseFiles([pdf('6200000000.pdf')]);

@@ -148,6 +148,14 @@ async function main(): Promise<void> {
     create: { userId: admin.id, roleId: superAdmin.id, scopeType: 'GROUP', scopeId: '' },
   });
 
+  // --- App settings (entry type prefixes; SettingsService falls back to the
+  // same defaults if the row is missing, so re-seeding never clobbers edits) ---
+  await prisma.appSetting.upsert({
+    where: { key: 'entry-prefixes' },
+    update: {},
+    create: { key: 'entry-prefixes', value: ['62', '63', '67'] },
+  });
+
   console.log('seed ok: 3 companies, 5 projects, 5 roles, 36 permissions, 1 admin');
 
   // E2E-only users. NEVER in production: gated behind SEED_E2E_USERS=true,

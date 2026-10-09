@@ -1,7 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
 
-export const ALLOWED_PREFIXES = ['62', '63', '67'];
-
 export interface ParsedSerial {
   serial: string;
   typePrefix: string;
@@ -14,7 +12,15 @@ export class InvalidSerialException extends BadRequestException {
   }
 }
 
-export function parseSerialFromFilename(filename: string): ParsedSerial {
+/**
+ * `allowedPrefixes` comes from SettingsService (DB-configurable, default
+ * ['62','63','67']) — kept out of this pure helper so tests and queue
+ * processors pass whatever list is currently configured.
+ */
+export function parseSerialFromFilename(
+  filename: string,
+  allowedPrefixes: string[],
+): ParsedSerial {
   const base = filename.replace(/\.pdf$/i, '');
   if (base === filename) {
     throw new InvalidSerialException('filename must end with .pdf');
@@ -26,9 +32,9 @@ export function parseSerialFromFilename(filename: string): ParsedSerial {
     throw new InvalidSerialException('filename contains non-digit characters');
   }
   const typePrefix = base.slice(0, 2);
-  if (!ALLOWED_PREFIXES.includes(typePrefix)) {
+  if (!allowedPrefixes.includes(typePrefix)) {
     throw new InvalidSerialException(
-      `type prefix '${typePrefix}' is not in the allowed list: ${ALLOWED_PREFIXES.join(', ')}`,
+      `type prefix '${typePrefix}' is not in the allowed list: ${allowedPrefixes.join(', ')}`,
     );
   }
   return { serial: base, typePrefix, counter: Number(base.slice(2)) };

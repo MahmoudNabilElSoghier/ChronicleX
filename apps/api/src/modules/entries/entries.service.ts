@@ -12,6 +12,9 @@ import type { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PermissionsService } from '../rbac/permissions.service';
 import { ScopeMatcher } from '../rbac/scope-matcher';
+// Value import (not `type`): emitDecoratorMetadata needs the class token so
+// Nest can resolve the SettingsService constructor dependency.
+import { SettingsService } from '../settings/settings.service';
 import { StorageService } from '../storage/storage.service';
 import type { BundleDownloadDto } from './dto/bundle-download.dto';
 import type { ExportEntriesDto } from './dto/export-entries.dto';
@@ -142,6 +145,7 @@ export class EntriesService {
     private readonly storage: StorageService,
     private readonly permissions: PermissionsService,
     private readonly scopes: ScopeMatcher,
+    private readonly settings: SettingsService,
   ) {}
 
   /** Grant-scoped WHERE for list queries. GROUP ENTRY:VIEW skips the clause. */
@@ -200,7 +204,10 @@ export class EntriesService {
     if (!validatePdfMagicBytes(file.buffer)) {
       throw new BadRequestException('File content is not a valid PDF');
     }
-    const { serial, typePrefix, counter } = parseSerialFromFilename(file.originalname);
+    const { serial, typePrefix, counter } = parseSerialFromFilename(
+      file.originalname,
+      this.settings.getEntryPrefixes(),
+    );
 
     const project = await this.prisma.project.findUnique({
       where: { id: dto.projectId },

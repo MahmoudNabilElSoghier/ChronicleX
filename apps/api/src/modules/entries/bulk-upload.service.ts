@@ -10,6 +10,8 @@ import type { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PermissionsService } from '../rbac/permissions.service';
 import { ScopeMatcher } from '../rbac/scope-matcher';
+// Value import (not `type`): emitDecoratorMetadata needs the class token.
+import { SettingsService } from '../settings/settings.service';
 import { StorageService } from '../storage/storage.service';
 import { RedisService } from '../../redis/redis.service';
 import { parseSerialFromFilename } from './serial.utils';
@@ -82,6 +84,7 @@ export class BulkUploadService {
     private readonly scopes: ScopeMatcher,
     private readonly redis: RedisService,
     @InjectQueue(BULK_QUEUE) private readonly queue: Queue<BulkJobData>,
+    private readonly settings: SettingsService,
   ) {}
 
   private hashKey(jobId: string): string {
@@ -137,7 +140,7 @@ export class BulkUploadService {
       const fileUuid = randomUUID();
       let serial: string;
       try {
-        serial = parseSerialFromFilename(file.originalname).serial;
+        serial = parseSerialFromFilename(file.originalname, this.settings.getEntryPrefixes()).serial;
         void serial;
       } catch (err) {
         immediate.push({
@@ -249,7 +252,7 @@ export class BulkUploadService {
 
     const parsed = input.fileNames.map((name) => {
       try {
-        return { serial: parseSerialFromFilename(name).serial };
+        return { serial: parseSerialFromFilename(name, this.settings.getEntryPrefixes()).serial };
       } catch (err) {
         return { error: err instanceof Error ? err.message : 'Invalid filename' };
       }

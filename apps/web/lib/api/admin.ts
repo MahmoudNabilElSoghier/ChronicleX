@@ -30,6 +30,25 @@ export interface AuditRow {
   createdAt: string;
 }
 
+export interface StructureProject {
+  id: string;
+  code: string;
+  nameAr: string;
+  nameEn: string;
+  entryCount: number;
+  lastUploadAt: string | null;
+}
+
+export interface StructureCompany {
+  id: string;
+  code: number;
+  nameAr: string;
+  nameEn: string;
+  entryCount: number;
+  lastUploadAt: string | null;
+  projects: StructureProject[];
+}
+
 function toQuery(params: Record<string, string | number | undefined>): string {
   const qs = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -74,6 +93,10 @@ export const adminApi = {
       nextCursor: string | null;
       hasMore: boolean;
     }> => api.request(`/audit-logs${toQuery(params)}`),
+  },
+  structure: {
+    get: (): Promise<{ companies: StructureCompany[] }> =>
+      api.request('/admin/structure'),
   },
 };
 

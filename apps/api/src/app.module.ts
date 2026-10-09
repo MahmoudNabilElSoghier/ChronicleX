@@ -4,6 +4,7 @@ import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { validate } from './config/env.validation';
 import { HealthModule } from './health/health.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -13,6 +14,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { EntriesModule } from './modules/entries/entries.module';
 import { RBACModule } from './modules/rbac/rbac.module';
 import { QueueModule } from './modules/queue/queue.module';
+import { SettingsModule } from './modules/settings/settings.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { UsersModule } from './modules/users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -39,6 +41,10 @@ import { RedisModule } from './redis/redis.module';
     UsersModule,
     DashboardModule,
     CatalogModule,
+    // @Global: SettingsService is injected by entries/bulk-upload without
+    // re-importing; registered after the modules it depends on.
+    SettingsModule,
+    AdminModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },

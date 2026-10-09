@@ -2,6 +2,7 @@ import type { Job } from 'bullmq';
 import { Prisma } from '../../../generated/prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RedisService } from '../../../redis/redis.service';
+import type { SettingsService } from '../../settings/settings.service';
 import { StorageService } from '../../storage/storage.service';
 import { BulkUploadProcessor } from '../bulk-upload.processor';
 import type { BulkJobData } from '../bulk-upload.service';
@@ -43,16 +44,20 @@ describe('BulkUploadProcessor', () => {
     hset: jest.fn(),
   };
 
+  const settings = { getEntryPrefixes: jest.fn(() => ['62', '63', '67']) };
+
   const worker = new BulkUploadProcessor(
     prisma as unknown as PrismaService,
     storage as unknown as StorageService,
     redis as unknown as RedisService,
+    settings as unknown as SettingsService,
   );
 
   const project = { id: 'p1', companyId: 'c1', code: 'REHAB', company: { id: 'c1', code: 2000 } };
 
   beforeEach(() => {
     jest.clearAllMocks();
+    settings.getEntryPrefixes.mockReturnValue(['62', '63', '67']);
     storage.getObjectBuffer.mockResolvedValue(Buffer.from('%PDF-1.7 bytes'));
     prisma.entry.findUnique.mockResolvedValue(null);
     prisma.entry.findFirst.mockResolvedValue(null);
@@ -80,6 +85,21 @@ describe('BulkUploadProcessor', () => {
     );
     expect(redis.hset).toHaveBeenCalledWith('bulk:job1', { status: 'done' });
     expect(storage.removeObject).toHaveBeenCalledWith('_temp/bulk/job1/f1.pdf');
+  });
+
+  it('prefix validation uses the DB-configured list', async () => {
+    settings.getEntryPrefixes.mockReturnValue(['99']);
+    await worker.process(jobOf({ originalName: '9900000000.pdf' }));
+    expect(prisma.entry.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ serial: '9900000000', typePrefix: '99' }),
+      }),
+    );
+    await worker.process(jobOf({ originalName: '6200000000.pdf' }));
+    expect(redis.rpush).toHaveBeenLastCalledWith(
+      'bulk:job1:results',
+      expect.stringContaining('"errorCode":"INVALID_FILENAME"'),
+    );
   });
 
   it('duplicate serial records failure without creating', async () => {

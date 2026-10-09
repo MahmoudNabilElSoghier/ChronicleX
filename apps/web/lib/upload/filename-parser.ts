@@ -4,10 +4,12 @@ export type ParseResult =
   | { ok: true; serial: string; typePrefix: string; counter: number }
   | { ok: false; code: ParseErrorCode };
 
-export const ALLOWED_PREFIXES = ['62', '63', '67'];
-
-/** Client mirror of the backend serial rules (apps/api serial.utils.ts). */
-export function parseFilename(name: string): ParseResult {
+/**
+ * Client mirror of the backend serial rules (apps/api serial.utils.ts).
+ * `allowedPrefixes` is DB-configurable — fetched once via settingsApi
+ * (queryKey ['settings','entry-prefixes']) and passed in by the caller.
+ */
+export function parseFilename(name: string, allowedPrefixes: string[]): ParseResult {
   const dot = name.lastIndexOf('.');
   if (dot < 0) {
     return { ok: false, code: 'NO_PDF' };
@@ -24,7 +26,7 @@ export function parseFilename(name: string): ParseResult {
     return { ok: false, code: 'NON_DIGIT' };
   }
   const typePrefix = base.slice(0, 2);
-  if (!ALLOWED_PREFIXES.includes(typePrefix)) {
+  if (!allowedPrefixes.includes(typePrefix)) {
     return { ok: false, code: 'BAD_PREFIX' };
   }
   return { ok: true, serial: base, typePrefix, counter: Number(base.slice(2)) };
