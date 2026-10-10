@@ -2,15 +2,7 @@
 
 import { Link, usePathname } from '@/lib/navigation';
 import { useTranslations } from 'next-intl';
-import {
-  Building2,
-  FileText,
-  Home,
-  ScrollText,
-  Settings,
-  Upload,
-  Users,
-} from 'lucide-react';
+import { Building2, FileText, Home, ScrollText, Upload, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useActiveJobs } from '@/lib/upload/active-jobs-context';
@@ -49,13 +41,6 @@ export function Sidebar(): JSX.Element {
       label: t('structure'),
       icon: Building2,
       show: isAdmin,
-      badge: 0,
-    },
-    {
-      href: '/admin/settings',
-      label: t('settings'),
-      icon: Settings,
-      show: roleNames.has('SUPER_ADMIN'),
       badge: 0,
     },
   ];

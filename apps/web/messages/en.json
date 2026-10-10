@@ -9,8 +9,7 @@
     "upload": "Upload",
     "users": "Users",
     "audit": "Audit Log",
-    "structure": "Company Structure",
-    "settings": "Settings",
+    "structure": "Manage structure",
     "admin": "Admin",
     "profile": "Profile"
   },
@@ -351,7 +350,29 @@
       "empty": "No companies visible to you",
       "noResults": "No matching results",
       "error": "Could not load the company structure",
-      "retry": "Retry"
+      "retry": "Retry",
+      "edit": "Edit",
+      "delete": "Delete",
+      "addCompany": "Add company",
+      "editCompany": "Edit company",
+      "addProject": "Add project",
+      "editProject": "Edit project",
+      "fieldCode": "Code",
+      "fieldNameAr": "Arabic name",
+      "fieldNameEn": "English name",
+      "fieldCompany": "Company",
+      "dialogSave": "Save",
+      "dialogCancel": "Cancel",
+      "deleteConfirmTitle": "Confirm delete",
+      "deleteCompanyConfirm": "Delete company {name}? It will be hidden from lists. Deletion is refused while it has active projects.",
+      "deleteProjectConfirm": "Delete project {name}? Recorded entries are unaffected, but the project disappears from upload and filter lists.",
+      "createdCompany": "Company created",
+      "updatedCompany": "Company updated",
+      "deletedCompany": "Company deleted",
+      "createdProject": "Project created",
+      "updatedProject": "Project updated",
+      "deletedProject": "Project deleted",
+      "saveFailed": "Could not save"
     },
     "settings": {
       "title": "Upload Settings",
@@ -368,7 +389,9 @@
       "saveFailed": "Could not save prefixes",
       "forbidden": "You cannot change group-wide settings",
       "remove": "Remove prefix {prefix}",
-      "noPrefixes": "No prefixes"
+      "noPrefixes": "No prefixes",
+      "section": "System settings",
+      "warning": "Changing prefixes affects validation of NEW filenames only."
     }
   },
   "profile": {

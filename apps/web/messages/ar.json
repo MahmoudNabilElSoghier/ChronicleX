@@ -9,8 +9,7 @@
     "upload": "رفع",
     "users": "المستخدمون",
     "audit": "سجل التدقيق",
-    "structure": "هيكل الشركات",
-    "settings": "الإعدادات",
+    "structure": "إدارة الهيكل",
     "admin": "الإدارة",
     "profile": "الحساب"
   },
@@ -351,7 +350,29 @@
       "empty": "لا توجد شرائح مرئية لك",
       "noResults": "لا توجد نتائج مطابقة",
       "error": "تعذر تحميل هيكل الشركات",
-      "retry": "إعادة المحاولة"
+      "retry": "إعادة المحاولة",
+      "edit": "تعديل",
+      "delete": "حذف",
+      "addCompany": "إضافة شركة",
+      "editCompany": "تعديل بيانات الشركة",
+      "addProject": "إضافة مشروع",
+      "editProject": "تعديل بيانات المشروع",
+      "fieldCode": "الكود",
+      "fieldNameAr": "الاسم بالعربية",
+      "fieldNameEn": "الاسم بالإنجليزية",
+      "fieldCompany": "الشركة",
+      "dialogSave": "حفظ",
+      "dialogCancel": "إلغاء",
+      "deleteConfirmTitle": "تأكيد الحذف",
+      "deleteCompanyConfirm": "حذف الشركة {name}؟ سيتم إخفاؤها من القوائم. لا يمكن الحذف إذا كان بها مشاريع نشطة.",
+      "deleteProjectConfirm": "حذف المشروع {name}؟ لن تتأثر القيود المسجلة، لكن المشروع سيختفي من قوائم الرفع والفلترة.",
+      "createdCompany": "تم إنشاء الشركة بنجاح",
+      "updatedCompany": "تم تحديث بيانات الشركة",
+      "deletedCompany": "تم حذف الشركة",
+      "createdProject": "تم إنشاء المشروع بنجاح",
+      "updatedProject": "تم تحديث بيانات المشروع",
+      "deletedProject": "تم حذف المشروع",
+      "saveFailed": "تعذر الحفظ"
     },
     "settings": {
       "title": "إعدادات الرفع",
@@ -368,7 +389,9 @@
       "saveFailed": "تعذر حفظ البادئات",
       "forbidden": "لا تملك صلاحية تعديل إعدادات المجموعة",
       "remove": "حذف البادئة {prefix}",
-      "noPrefixes": "لا توجد بادئات"
+      "noPrefixes": "لا توجد بادئات",
+      "section": "إعدادات النظام",
+      "warning": "تغيير البادئات يؤثر على التحقق من الأسماء الجديدة فقط."
     }
   },
   "profile": {

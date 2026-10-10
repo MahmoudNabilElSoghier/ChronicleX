@@ -91,4 +91,27 @@ describe('SettingsService', () => {
     );
     expect(prisma.appSetting.upsert).not.toHaveBeenCalled();
   });
+
+  it('a rejected list never poisons the next valid save — upsert still runs', async () => {
+    // Regression: validation short-circuits BEFORE the GROUP check and the
+    // upsert; a following well-formed call must reach prisma.appSetting.upsert
+    // with the full list (the /admin/settings save path).
+    await expect(svc.updateEntryPrefixes(['6'], ACTOR)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(prisma.appSetting.upsert).not.toHaveBeenCalled();
+
+    const res = await svc.updateEntryPrefixes(['62', '63', '67', '99'], ACTOR);
+    expect(res).toEqual({ prefixes: ['62', '63', '67', '99'] });
+    expect(prisma.appSetting.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { key: 'entry-prefixes' },
+        update: { value: ['62', '63', '67', '99'], updatedBy: 'u1' },
+        create: { key: 'entry-prefixes', value: ['62', '63', '67', '99'], updatedBy: 'u1' },
+      }),
+    );
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'PREFIXES_CHANGED' }),
+    );
+  });
 });

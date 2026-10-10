@@ -60,7 +60,43 @@ function toQuery(params: Record<string, string | number | undefined>): string {
   return s ? `?${s}` : '';
 }
 
+export interface CompanyRow {
+  id: string;
+  code: number;
+  nameAr: string;
+  nameEn: string;
+}
+
+export interface ProjectRow {
+  id: string;
+  code: string;
+  nameAr: string;
+  nameEn: string;
+  companyId: string;
+}
+
 export const adminApi = {
+  companies: {
+    create: (body: { code: number; nameAr: string; nameEn: string }): Promise<CompanyRow> =>
+      api.request<CompanyRow>('/companies', { method: 'POST', body: JSON.stringify(body) }),
+    update: (id: string, body: { nameAr?: string; nameEn?: string }): Promise<CompanyRow> =>
+      api.request<CompanyRow>(`/companies/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    remove: (id: string): Promise<CompanyRow> =>
+      api.request<CompanyRow>(`/companies/${id}`, { method: 'DELETE' }),
+  },
+  projects: {
+    create: (body: {
+      code: string;
+      nameAr: string;
+      nameEn: string;
+      companyId: string;
+    }): Promise<ProjectRow> =>
+      api.request<ProjectRow>('/projects', { method: 'POST', body: JSON.stringify(body) }),
+    update: (id: string, body: { nameAr?: string; nameEn?: string }): Promise<ProjectRow> =>
+      api.request<ProjectRow>(`/projects/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    remove: (id: string): Promise<ProjectRow> =>
+      api.request<ProjectRow>(`/projects/${id}`, { method: 'DELETE' }),
+  },
   users: {
     list: (params: Record<string, string | number | undefined>): Promise<{
       items: AdminUser[];

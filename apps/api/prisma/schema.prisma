@@ -43,6 +43,7 @@ model Company {
   nameEn    String
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
   projects  Project[]
   entries   Entry[]
 }
@@ -54,6 +55,7 @@ model Project {
   code      String
   nameAr    String
   nameEn    String
+  deletedAt DateTime?
   entries   Entry[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -47,7 +47,7 @@ export class AdminService {
     if (companies.length === 0) return { companies: [] };
 
     const projects = await this.prisma.project.findMany({
-      where: { companyId: { in: companies.map((c) => c.id) } },
+      where: { companyId: { in: companies.map((c) => c.id) }, deletedAt: null },
       select: { id: true, companyId: true, code: true, nameAr: true, nameEn: true },
       orderBy: { code: 'asc' },
     });

@@ -81,7 +81,10 @@ describe('AdminService.structure', () => {
       ]),
     );
     expect(prisma.project.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ orderBy: { code: 'asc' } }),
+      expect.objectContaining({
+        orderBy: { code: 'asc' },
+        where: expect.objectContaining({ deletedAt: null }),
+      }),
     );
   });
 
